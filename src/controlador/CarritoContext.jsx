@@ -1,14 +1,14 @@
 /**
  * CONTROLADOR: CarritoContext.jsx
- * Proveedor de contexto para el carrito de compras.
+ * Proveedor de contexto para el carrito de compras con soporte para selección parcial (HU-07)
+ * y persistencia por ítem.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { CarritoModelo } from '../modelo/carritoModelo'
 import { ContextoCarrito } from './contextos'
 
 export function ProveedorCarrito({ children }) {
-  // La carga perezosa recupera el carrito antes del primer renderizado.
   const [articulos, setArticulos] = useState(() => CarritoModelo.obtenerArticulos())
   const [mensajeAccesible, setMensajeAccesible] = useState('')
   const [notificacionVisual, setNotificacionVisual] = useState(null)
@@ -34,7 +34,6 @@ export function ProveedorCarrito({ children }) {
       totalArticulos
     })
 
-    // La notificación visual desaparece sin interrumpir el anuncio accesible.
     setTimeout(() => {
       setNotificacionVisual(null)
     }, 4500)
@@ -54,17 +53,44 @@ export function ProveedorCarrito({ children }) {
     setArticulos([...nuevosArticulos])
   }, [])
 
+  // HU-07: Alternar selección individual
+  const alternarSeleccion = useCallback((productoId) => {
+    const nuevosArticulos = CarritoModelo.alternarSeleccionArticulo(productoId)
+    setArticulos([...nuevosArticulos])
+  }, [])
+
+  // HU-07: Seleccionar o deseleccionar todos
+  const seleccionarTodos = useCallback((seleccionados = true) => {
+    const nuevosArticulos = CarritoModelo.seleccionarTodosArticulos(seleccionados)
+    setArticulos([...nuevosArticulos])
+    setMensajeAccesible(seleccionados ? 'Todos los artículos han sido seleccionados.' : 'Se han deseleccionado todos los artículos.')
+  }, [])
+
+  // HU-08: Remover solo los artículos comprados tras confirmar orden
+  const eliminarArticulosComprados = useCallback((articulosComprados = []) => {
+    const restantes = CarritoModelo.eliminarArticulosComprados(articulosComprados)
+    setArticulos([...restantes])
+    setMensajeAccesible('Se procesó la compra de los artículos seleccionados.')
+  }, [])
+
   const vaciarCarrito = useCallback(() => {
     CarritoModelo.limpiarCarrito()
     setArticulos([])
     setMensajeAccesible('El carrito ha sido vaciado.')
   }, [])
 
-  const totales = CarritoModelo.calcularTotales(articulos)
+  // Cálculo memoizado de totales dinámicos
+  const totales = useMemo(() => {
+    return CarritoModelo.calcularTotales(articulos)
+  }, [articulos])
 
   const valorContexto = {
     articulos,
+    articulosSeleccionados: totales.articulosSeleccionados,
     cantidadTotal: totales.cantidadTotal,
+    cantidadSeleccionada: totales.cantidadSeleccionada,
+    haySeleccionados: totales.haySeleccionados,
+    todosSeleccionados: totales.todosSeleccionados,
     totales,
     mensajeAccesible,
     notificacionVisual,
@@ -72,6 +98,9 @@ export function ProveedorCarrito({ children }) {
     agregarAlCarrito,
     eliminarDelCarrito,
     actualizarCantidad,
+    alternarSeleccion,
+    seleccionarTodos,
+    eliminarArticulosComprados,
     vaciarCarrito
   }
 

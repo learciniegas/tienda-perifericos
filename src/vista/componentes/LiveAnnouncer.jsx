@@ -1,6 +1,6 @@
 /**
  * VISTA: anunciador accesible
- * Región accesible en vivo para notificar cambios dinámicos a lectores de pantalla (WCAG 4.1.3).
+ * Región accesible en vivo para notificar cambios dinámicos a lectores de pantalla.
  */
 
 import { useCarrito } from '../../controlador/useCarrito'

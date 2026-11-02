@@ -2,7 +2,7 @@
  * VISTA: CatalogoPage.jsx
  * Vista completa del catálogo con filtrado reactivo inmediato (sin botón de aplicar).
  * Los filtros se aplican al instante y se limpian automáticamente al navegar a otras secciones.
- * Cumple con HU-02, HU-03, HU-04, HU-05 y accesibilidad WCAG 2.2.
+ * Cumple con HU-02, HU-03, HU-04, HU-05 y accesibilidad universal.
  */
 
 import { useState, useEffect, useRef } from 'react'

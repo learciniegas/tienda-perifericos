@@ -1,6 +1,6 @@
 /**
  * VISTA: enlace para saltar al contenido
- * Enlace accesible oculto que se hace visible al recibir foco (WCAG 2.2 - Criterio 2.4.1 Evitar bloques).
+ * Enlace accesible oculto que se hace visible al recibir foco para evitar bloques repetitivos.
  */
 
 export function EnlaceSaltarContenido() {

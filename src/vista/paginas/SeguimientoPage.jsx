@@ -1,71 +1,93 @@
 /**
  * VISTA: SeguimientoPage.jsx
- * Rastreo de pedidos por N# Orden en la provincia de Pichincha (HU-15).
+ * Rastreo de pedidos por N# de Orden con persistencia y consulta en Supabase/local (HU-09, HU-15).
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { CheckoutModelo } from '../../modelo/checkoutModelo'
 import { IconoPeriferico } from '../componentes/PeripheralIcon'
 
-function cargarPedidoInicial() {
+function cargarUltimoPedidoLocal() {
   try {
     const guardado = localStorage.getItem('ultimo_pedido_generado')
-    if (guardado) {
-      const parsed = JSON.parse(guardado)
-      return {
-        ...parsed,
-        pasos: [
-          { nombre: 'Pago Confirmado', completado: true, fecha: 'Hoy' },
-          { nombre: 'En preparación', completado: true, activo: true, fecha: 'En almacén' },
-          { nombre: 'En ruta a Pichincha', completado: false, fecha: 'Estimado 24h' },
-          { nombre: 'Entregado', completado: false, fecha: 'En domicilio' }
-        ]
-      }
-    }
-  } catch (error) {
-    console.warn('No se pudo recuperar el pedido guardado:', error)
+    return guardado ? JSON.parse(guardado) : null
+  } catch (err) {
+    console.warn('Error recuperando último pedido:', err)
     return null
   }
-  return null
 }
 
 export function PaginaSeguimiento() {
-  const [pedidoConsultado, setPedidoConsultado] = useState(cargarPedidoInicial)
-  const [numeroOrden, setNumeroOrden] = useState(() => pedidoConsultado?.codigo || '')
-  const [cargando, setCargando] = useState(false)
+  const [parametrosUrl] = useSearchParams()
+  const codigoUrl = parametrosUrl.get('orden') || ''
+
+  const [pedidoConsultado, setPedidoConsultado] = useState(() => {
+    if (codigoUrl) return null
+    return cargarUltimoPedidoLocal()
+  })
+  const [numeroOrden, setNumeroOrden] = useState(() => {
+    if (codigoUrl) return codigoUrl
+    const ultimo = cargarUltimoPedidoLocal()
+    return ultimo?.codigo || ''
+  })
+  const [cargando, setCargando] = useState(() => Boolean(codigoUrl))
   const [error, setError] = useState('')
 
-  const consultarPedido = (evento) => {
+  // Si viene con parámetro ?orden=... en la URL, consultar asíncronamente
+  useEffect(() => {
+    let activo = true
+
+    if (codigoUrl) {
+      CheckoutModelo.consultarPedidoPorCodigo(codigoUrl)
+        .then((pedido) => {
+          if (!activo) return
+          if (pedido) {
+            setPedidoConsultado(pedido)
+            setError('')
+          } else {
+            setError(`No se encontró ningún pedido con el código #${codigoUrl.trim().toUpperCase()}. Verifica el código de tu comprobante.`)
+            setPedidoConsultado(null)
+          }
+          setCargando(false)
+        })
+        .catch((err) => {
+          if (!activo) return
+          setError('Ocurrió un error al consultar el pedido: ' + err.message)
+          setPedidoConsultado(null)
+          setCargando(false)
+        })
+    }
+
+    return () => {
+      activo = false
+    }
+  }, [codigoUrl])
+
+  const manejarEnvio = async (evento) => {
     evento.preventDefault()
-    if (!numeroOrden.trim()) {
-      setError('Por favor ingresa un número de pedido válido.')
+    if (!numeroOrden || !numeroOrden.trim()) {
+      setError('Por favor ingresa un número de pedido válido (ej: ORD-123456).')
       return
     }
 
     setCargando(true)
     setError('')
 
-    // Simula una consulta mientras el seguimiento se conecta a un servicio de pedidos.
-    setTimeout(() => {
+    try {
+      const pedido = await CheckoutModelo.consultarPedidoPorCodigo(numeroOrden)
+      if (pedido) {
+        setPedidoConsultado(pedido)
+      } else {
+        setError(`No se encontró ningún pedido con el código #${numeroOrden.trim().toUpperCase()}. Verifica el código de tu comprobante.`)
+        setPedidoConsultado(null)
+      }
+    } catch (err) {
+      setError('Ocurrió un error al consultar el pedido: ' + err.message)
+      setPedidoConsultado(null)
+    } finally {
       setCargando(false)
-      const codigoBuscado = numeroOrden.trim().toUpperCase().replace('#', '')
-      
-      setPedidoConsultado({
-        codigo: codigoBuscado,
-        estadoActual: 'En preparación',
-        fecha: new Date().toLocaleDateString('es-EC'),
-        canton: 'Quito, Pichincha',
-        pasos: [
-          { nombre: 'Pago Confirmado', completado: true, fecha: 'Hoy, 10:30 AM' },
-          { nombre: 'En preparación', completado: true, activo: true, fecha: 'Hoy, 11:15 AM' },
-          { nombre: 'En ruta a Pichincha', completado: false, fecha: 'Próximas 24 hrs' },
-          { nombre: 'Entregado', completado: false, fecha: 'Estimado en destino' }
-        ],
-        articulos: [
-          { nombre: 'Logitech G502 HERO', cantidad: 1, precio: 59.99 },
-          { nombre: 'Corsair K70 RGB MK.2', cantidad: 1, precio: 139.00 }
-        ]
-      })
-    }, 400)
+    }
   }
 
   return (
@@ -73,26 +95,30 @@ export function PaginaSeguimiento() {
       <div className="tracking-header-zone">
         <h1 className="catalog-main-title">Seguimiento de pedidos</h1>
         <p className="catalog-subtitle">
-          Consulta el estado de despacho de tus periféricos en la provincia de Pichincha.
+          Consulta en tiempo real el estado de despacho y entrega de tus periféricos en Quito y Pichincha.
         </p>
       </div>
 
       <div className="tracking-box-card">
-        <form onSubmit={consultarPedido} className="tracking-form" role="search">
+        <form onSubmit={manejarEnvio} className="tracking-form" role="search">
           <label htmlFor="input-order-code" className="tracking-label">
-            Número de pedido
+            Número de pedido o comprobante
           </label>
           <div className="tracking-input-wrapper">
             <input
               type="text"
               id="input-order-code"
-              placeholder="Ej: ORD-8941 o 1001"
+              placeholder="Ej: ORD-948123 o 1001"
               value={numeroOrden}
               onChange={(e) => setNumeroOrden(e.target.value)}
-              className="tracking-input"
+              className="tracking-input font-mono"
             />
-            <button type="submit" className="btn-primary tracking-btn">
-              Consultar estado
+            <button
+              type="submit"
+              className="btn-primary tracking-btn"
+              disabled={cargando}
+            >
+              {cargando ? 'Buscando...' : 'Consultar estado'}
             </button>
           </div>
           {error && <p className="error-text" role="alert">{error}</p>}
@@ -101,7 +127,7 @@ export function PaginaSeguimiento() {
         {cargando && (
           <div className="loading-state" role="status">
             <div className="spinner" aria-hidden="true" />
-            <p>Buscando orden en el sistema de envíos...</p>
+            <p>Consultando base de datos de envíos en Pichincha...</p>
           </div>
         )}
 
@@ -110,7 +136,9 @@ export function PaginaSeguimiento() {
             <div className="order-summary-badge">
               <div>
                 <h2>Pedido #{pedidoConsultado.codigo}</h2>
-                <p>Fecha: {pedidoConsultado.fecha} • Destino: {pedidoConsultado.canton || 'Pichincha'}</p>
+                <p>
+                  Fecha: {pedidoConsultado.fecha} {pedidoConsultado.hora ? `• ${pedidoConsultado.hora}` : ''} • Destino: {pedidoConsultado.direccionEnvio?.sector || pedidoConsultado.canton || 'Quito, Pichincha'}
+                </p>
               </div>
               <span className="status-pill status-in-progress">
                 {pedidoConsultado.estadoActual}
@@ -119,7 +147,7 @@ export function PaginaSeguimiento() {
 
             {/* Línea de tiempo accesible */}
             <ol className="progress-stepper" aria-label="Progreso del envío">
-              {pedidoConsultado.pasos.map((paso, indice) => (
+              {(pedidoConsultado.pasosSeguimiento || pedidoConsultado.pasos || []).map((paso, indice) => (
                 <li
                   key={indice}
                   className={`step-item ${paso.completado ? 'is-completed' : ''} ${paso.activo ? 'is-active' : ''}`}
@@ -139,13 +167,45 @@ export function PaginaSeguimiento() {
             <div className="order-items-preview">
               <h3>Artículos en despacho</h3>
               <ul>
-                {pedidoConsultado.articulos.map((articulo, indice) => (
+                {(pedidoConsultado.articulos || []).map((articulo, indice) => (
                   <li key={indice}>
                     <span>{articulo.cantidad}x {articulo.nombre}</span>
                     <strong>${(articulo.precio * articulo.cantidad).toFixed(2)}</strong>
                   </li>
                 ))}
               </ul>
+              {pedidoConsultado.totales && (
+                <div className="order-total-callout">
+                  <span>Total de la orden:</span>
+                  <strong>${Number(pedidoConsultado.totales.total).toFixed(2)}</strong>
+                </div>
+              )}
+            </div>
+
+            {/* Notificación oficial por correo de estados (Release 2) */}
+            <div className="order-email-notification-card">
+              <div className="email-notif-header">
+                <span className="email-icon" aria-hidden="true">📧</span>
+                <div>
+                  <strong>Aviso oficial por correo electrónico (Notificación de Estado):</strong>
+                  <p>
+                    Se ha enviado una notificación a{' '}
+                    <strong>{pedidoConsultado.cliente?.correo || 'tu correo registrado'}</strong> con la actualización en tiempo real de tu pedido.
+                  </p>
+                </div>
+              </div>
+              <div className="email-preview-box">
+                <span className="email-preview-tag">NOTIFICACIÓN AUTOMÁTICA ENVIADA</span>
+                <p className="email-preview-text">
+                  Estimado/a <strong>{pedidoConsultado.cliente?.nombre || 'Cliente'}</strong>: Te informamos que tu pedido{' '}
+                  <strong>#{pedidoConsultado.codigo}</strong> se encuentra en estado{' '}
+                  <span className="email-status-highlight">"{pedidoConsultado.estadoActual}"</span> con destino a{' '}
+                  <strong>{pedidoConsultado.direccionEnvio?.sector || 'Pichincha, Ecuador'}</strong>.
+                  {pedidoConsultado.estadoActual === 'Entregado'
+                    ? ' Tu paquete ha sido entregado en tu domicilio. ¡Gracias por confiar en Periféricos Pichincha!'
+                    : ' Nuestro centro de distribución en Quito continúa con la preparación y despacho.'}
+                </p>
+              </div>
             </div>
           </div>
         )}

@@ -204,3 +204,85 @@ export const PRODUCTOS_PREDETERMINADOS = [
     num_resenas: 85
   }
 ]
+
+export const ESPECIFICACIONES_PREDETERMINADAS = {
+  1: [
+    { nombre: 'Conectividad', valor: 'Cable USB trenzado de 2.1 m' },
+    { nombre: 'Sensor', valor: 'HERO 25K de alta precisión' },
+    { nombre: 'Resolución', valor: '100 – 25,600 DPI ajustables' },
+    { nombre: 'Botones', valor: '11 botones programables con memoria integrada' },
+    { nombre: 'Peso', valor: '121 g (incluye 5 pesas ajustables de 3.6 g)' },
+    { nombre: 'Iluminación', valor: 'LIGHTSYNC RGB sincronizable' }
+  ],
+  2: [
+    { nombre: 'Conectividad', valor: 'Cable USB Speedflex de 1.8 m' },
+    { nombre: 'Sensor', valor: 'Óptico de 6,400 DPI' },
+    { nombre: 'Botones', valor: '5 botones Hyperesponse de respuesta táctil' },
+    { nombre: 'Durabilidad', valor: 'Hasta 10 millones de clics' },
+    { nombre: 'Diseño', valor: 'Ergonómico para diestros' },
+    { nombre: 'Peso', valor: '96 g ultraligero' }
+  ],
+  3: [
+    { nombre: 'Conectividad', valor: 'Cable USB enmallado' },
+    { nombre: 'Resolución', valor: 'Hasta 10,000 DPI con 5 niveles rápidos' },
+    { nombre: 'Sensor', valor: 'Pixart P3325 óptico' },
+    { nombre: 'Iluminación', valor: 'RGB Chroma con 7 modos de luz' },
+    { nombre: 'Botones', valor: '7 botones programables' },
+    { nombre: 'Construcción', valor: 'Base de teflón antideslizante' }
+  ],
+  4: [
+    { nombre: 'Switches', valor: 'Mecánicos Cherry MX Red alemanes' },
+    { nombre: 'Estructura', valor: 'Aluminio cepillado de grado aeroespacial' },
+    { nombre: 'Iluminación', valor: 'RGB individual por tecla personalizable' },
+    { nombre: 'Conectividad', valor: 'USB con puerto de paso USB Passthrough' },
+    { nombre: 'Accesorios', valor: 'Reposamuñecas magnético extraíble' },
+    { nombre: 'Anti-Ghosting', valor: '100% Full Key Rollover (NKRO)' }
+  ],
+  5: [
+    { nombre: 'Formato', valor: 'Compacto TKL (Tenkeyless sin teclado numérico)' },
+    { nombre: 'Switches', valor: 'Mecánicos Outemu Blue táctiles y audibles' },
+    { nombre: 'Teclas', valor: 'Doble inyección resistentes al desgaste' },
+    { nombre: 'Iluminación', valor: 'Retroiluminación roja brillante' },
+    { nombre: 'Estructura', valor: 'Placa de acero y ABS reforzado' },
+    { nombre: 'Conectividad', valor: 'Cable USB reforzado' }
+  ],
+  6: [
+    { nombre: 'Conectividad', valor: 'Bluetooth Low Energy (hasta 3 dispositivos simultáneos)' },
+    { nombre: 'Alcance', valor: 'Hasta 10 metros de cobertura inalámbrica' },
+    { nombre: 'Batería', valor: '2 pilas AAA incluidas (hasta 24 meses de duración)' },
+    { nombre: 'Compatibilidad', valor: 'Windows, macOS, iPadOS, Android, ChromeOS' },
+    { nombre: 'Perfil', valor: 'Teclas cóncavas ultradelgadas y silenciosas' },
+    { nombre: 'Peso', valor: '423 g ideal para movilidad' }
+  ],
+  7: [
+    { nombre: 'Sonido', valor: 'Envolvente virtual 7.1 con tarjeta de sonido USB' },
+    { nombre: 'Transductores', valor: 'Controladores dinámicos de 53 mm con imanes de neodimio' },
+    { nombre: 'Almohadillas', valor: 'Espuma con memoria viscoelástica y polipiel premium' },
+    { nombre: 'Micrófono', valor: 'Desmontable con cancelación activa de ruido' },
+    { nombre: 'Estructura', valor: 'Chasis robusto de aluminio anodizado' },
+    { nombre: 'Conexión', valor: 'Jack 3.5 mm o módulo amplificador USB' }
+  ],
+  8: [
+    { nombre: 'Sonido', valor: 'Audio posicional 7.1 inmersivo' },
+    { nombre: 'Peso', valor: '250 g ultraliviano para largas sesiones' },
+    { nombre: 'Micrófono', valor: 'Cardioide flexible con supresión de ruido posterior' },
+    { nombre: 'Controladores', valor: '40 mm calibrados para graves profundos' },
+    { nombre: 'Almohadillas', valor: 'Espuma viscoelástica con ranuras ocultas para gafas' },
+    { nombre: 'Conector', valor: 'Analógico de 3.5 mm universal' }
+  ],
+  9: [
+    { nombre: 'Resolución de video', valor: 'Full HD 1080p a 30 fps / 720p a 60 fps' },
+    { nombre: 'Lente', valor: 'Cristal Full HD con enfoque automático preciso' },
+    { nombre: 'Campo visual', valor: '78 grados diagonal' },
+    { nombre: 'Audio', valor: 'Dos micrófonos omnidireccionales con captura estéreo' },
+    { nombre: 'Corrección de luz', valor: 'RightLight 2 para entornos con poca iluminación' },
+    { nombre: 'Soporte', valor: 'Clip universal ajustable y rosca estándar para trípode' }
+  ],
+  10: [
+    { nombre: 'Dimensiones', valor: 'Extendido XL (930 mm x 300 mm x 3 mm)' },
+    { nombre: 'Superficie', valor: 'Tejido microtexturizado resistente a derrames y líquidos' },
+    { nombre: 'Bordes', valor: 'Costura reforzada de precisión de 360° contra deshilachado' },
+    { nombre: 'Base', valor: 'Goma antideslizante de alta adherencia' },
+    { nombre: 'Optimización', valor: 'Calibrado para sensores ópticos y láser de alta resolución' }
+  ]
+}

@@ -52,7 +52,7 @@ export function TarjetaProducto({ producto }) {
         <span className="product-category">{producto.categoria} • {producto.marca}</span>
         
         <h3 id={`prod-title-${producto.id}`} className="product-title">
-          <Link to={`/catalogo?cat=${producto.categoria_slug || ''}`} className="product-title-link">
+          <Link to={`/producto/${producto.id}`} className="product-title-link">
             {producto.nombre}
           </Link>
         </h3>
@@ -84,11 +84,11 @@ export function TarjetaProducto({ producto }) {
           </button>
 
           <Link
-            to={`/catalogo?cat=${producto.categoria_slug || ''}`}
+            to={`/producto/${producto.id}`}
             className="btn-secondary btn-view-product"
-            aria-label={`Ver opciones de ${producto.nombre}`}
+            aria-label={`Ver detalles y opciones de ${producto.nombre}`}
           >
-            Ver opciones
+            Ver detalles
           </Link>
         </div>
       </div>

@@ -35,7 +35,7 @@ export function BeneficiosCompra() {
           </div>
           <div className="trust-text">
             <h3>Accesibilidad Universal</h3>
-            <p>Plataforma diseñada bajo estándares WCAG 2.2 para una experiencia fluida.</p>
+            <p>Plataforma diseñada bajo estándares de accesibilidad para una experiencia fluida.</p>
           </div>
         </div>
       </div>

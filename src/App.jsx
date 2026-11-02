@@ -1,6 +1,6 @@
 /**
  * ARCHIVO PRINCIPAL DE APLICACIÓN: App.jsx
- * Enrutador principal, integración de contextos globales (MVS) y accesibilidad WCAG 2.2.
+ * Enrutador principal, integración de contextos globales (MVS) y accesibilidad.
  */
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
@@ -13,9 +13,14 @@ import { Encabezado } from './vista/componentes/Header'
 import { PieDePagina } from './vista/componentes/Footer'
 import { PaginaInicio } from './vista/paginas/LandingPage'
 import { PaginaCatalogo } from './vista/paginas/CatalogoPage'
+import { PaginaProductoDetalle } from './vista/paginas/ProductoDetallePage'
 import { PaginaCarrito } from './vista/paginas/CarritoPage'
+import { PaginaCheckout } from './vista/paginas/CheckoutPage'
+import { PaginaLogin } from './vista/paginas/LoginPage'
 import { PaginaSeguimiento } from './vista/paginas/SeguimientoPage'
 import { PaginaPreguntasFrecuentes } from './vista/paginas/FaqPage'
+import { PaginaContacto } from './vista/paginas/ContactoPage'
+import { PaginaCuenta } from './vista/paginas/CuentaPage'
 import './index.css'
 import './App.css'
 
@@ -24,7 +29,7 @@ export default function Aplicacion() {
     <BrowserRouter>
       <ProveedorAutenticacion>
         <ProveedorCarrito>
-          {/* Elementos globales de accesibilidad WCAG 2.2 */}
+          {/* Elementos globales de accesibilidad */}
           <EnlaceSaltarContenido />
           <AnunciadorAccesible />
           <NotificacionCarrito />
@@ -38,9 +43,14 @@ export default function Aplicacion() {
               <Routes>
                 <Route path="/" element={<PaginaInicio />} />
                 <Route path="/catalogo" element={<PaginaCatalogo />} />
+                <Route path="/producto/:id" element={<PaginaProductoDetalle />} />
                 <Route path="/carrito" element={<PaginaCarrito />} />
+                <Route path="/checkout" element={<PaginaCheckout />} />
+                <Route path="/login" element={<PaginaLogin />} />
                 <Route path="/seguimiento" element={<PaginaSeguimiento />} />
                 <Route path="/faq" element={<PaginaPreguntasFrecuentes />} />
+                <Route path="/contacto" element={<PaginaContacto />} />
+                <Route path="/cuenta" element={<PaginaCuenta />} />
               </Routes>
             </main>
 

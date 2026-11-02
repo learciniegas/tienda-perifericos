@@ -132,10 +132,44 @@ export function Encabezado() {
             {menuUsuarioAbierto && (
               <div className="nav-flyout-menu user-flyout" role="menu">
                 <div className="flyout-header">
-                  <p>Sesión activa: <strong>{usuario.email}</strong></p>
-                  <p className="pichincha-user-zone">Zona de entrega: Pichincha</p>
+                  {usuario.autenticado ? (
+                    <>
+                      <p>Sesión activa: <strong>{usuario.email}</strong></p>
+                      <p className="pichincha-user-zone">Zona de entrega: Pichincha</p>
+                    </>
+                  ) : (
+                    <>
+                      <p>Modo: <strong>Invitado</strong></p>
+                      <p className="pichincha-user-zone">Inicia sesión para guardar pedidos</p>
+                    </>
+                  )}
                 </div>
                 <ul className="flyout-links-list">
+                  {usuario.autenticado ? (
+                    <>
+                      <li>
+                        <Link to="/cuenta" onClick={() => setMenuUsuarioAbierto(false)}>
+                          Mi Cuenta y Pedidos
+                        </Link>
+                      </li>
+                      <li>
+                        <Link to="/cuenta#direcciones" onClick={() => setMenuUsuarioAbierto(false)}>
+                          Mis Direcciones en Quito
+                        </Link>
+                      </li>
+                      <li>
+                        <Link to="/cuenta#fiscales" onClick={() => setMenuUsuarioAbierto(false)}>
+                          Datos Fiscales y RUC
+                        </Link>
+                      </li>
+                    </>
+                  ) : (
+                    <li>
+                      <Link to="/login" onClick={() => setMenuUsuarioAbierto(false)} className="flyout-login-highlight">
+                        🔑 Iniciar Sesión / Registrarse
+                      </Link>
+                    </li>
+                  )}
                   <li>
                     <Link to="/seguimiento" onClick={() => setMenuUsuarioAbierto(false)}>
                       Estado de mis Pedidos
@@ -147,6 +181,11 @@ export function Encabezado() {
                     </Link>
                   </li>
                   <li>
+                    <Link to="/contacto" onClick={() => setMenuUsuarioAbierto(false)}>
+                      Contacto con Soporte
+                    </Link>
+                  </li>
+                  <li className="flyout-action-separator">
                     <button
                       type="button"
                       className="flyout-action-btn"
@@ -155,7 +194,7 @@ export function Encabezado() {
                         setMenuUsuarioAbierto(false)
                       }}
                     >
-                      {usuario.autenticado ? 'Cambiar a modo Invitado' : 'Iniciar sesión como Luis'}
+                      {usuario.autenticado ? 'Cambiar a modo Invitado' : 'Acceso rápido como Luis'}
                     </button>
                   </li>
                 </ul>
@@ -222,10 +261,26 @@ export function Encabezado() {
             </li>
             <li>
               <NavLink
+                to="/contacto"
+                className={({ isActive }) => `sub-link ${isActive ? 'active' : ''}`}
+              >
+                Contacto
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
                 to="/faq"
                 className={({ isActive }) => `sub-link ${isActive ? 'active' : ''}`}
               >
                 Ayuda / FAQ
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
+                to={usuario.autenticado ? "/cuenta" : "/login"}
+                className={({ isActive }) => `sub-link ${isActive ? 'active' : ''}`}
+              >
+                {usuario.autenticado ? "Mi Cuenta" : "Iniciar Sesión"}
               </NavLink>
             </li>
           </ul>

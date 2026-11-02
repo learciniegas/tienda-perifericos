@@ -1,6 +1,6 @@
 /**
  * DESIGN SYSTEM & TOKENS GLOBALES: index.css
- * Basado en la paleta de la imagen de referencia y estándares WCAG 2.2 (Nivel AA y AAA).
+ * Basado en la paleta de la imagen de referencia y estándares de accesibilidad (Nivel AA y AAA).
  */
 
 :root {
@@ -20,7 +20,7 @@
   /* Colores neutros de alto contraste */
   --color-bg-page: #f4f6f8;          /* Fondo general de la plataforma estilo Amazon */
   --color-bg-surface: #ffffff;       /* Fondo de tarjetas y encabezado */
-  --color-border: #d1d5db;           /* Bordes con contraste 3:1 (WCAG 1.4.11) */
+  --color-border: #d1d5db;           /* Bordes con contraste 3:1 */
   --color-border-subtle: #e5e7eb;
   
   /* Jerarquía tipográfica accesible */
@@ -28,7 +28,7 @@
   --color-text-secondary: #4b5563;   /* Texto secundario/descriptivo (Contraste 7.4:1 - AAA) */
   --color-text-inverse: #ffffff;     /* Texto blanco sobre fondos oscuros */
 
-  /* Foco visible para accesibilidad por teclado (WCAG 2.4.11 / 2.4.13) */
+  /* Foco visible para accesibilidad por teclado */
   --focus-outline-color: #6d28d9;
   --focus-outline-width: 3px;
   --focus-outline-offset: 2px;
@@ -43,7 +43,7 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
-  /* Área mínima táctil e interactiva (WCAG 2.5.8 Nivel AA: 24px, objetivo AAA: 44px) */
+  /* Área mínima táctil e interactiva (Nivel AA: 24px, objetivo AAA: 44px) */
   --touch-target-min: 44px;
 }
 
@@ -68,7 +68,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Regla crítica WCAG 2.2: Foco visible universal */
+/* Regla de accesibilidad: Foco visible universal */
 :focus-visible {
   outline: var(--focus-outline-width) solid var(--focus-outline-color);
   outline-offset: var(--focus-outline-offset);
@@ -101,7 +101,7 @@ button {
   border: 0;
 }
 
-/* Enlace de salto accesible (Skip to content - WCAG 2.4.1) */
+/* Enlace de salto accesible (Skip to content) */
 .skip-link {
   position: absolute;
   top: -999px;

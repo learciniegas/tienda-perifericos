@@ -1,7 +1,7 @@
 /**
  * VISTA: LandingPage.jsx
  * Página principal estilo Amazon para el e-commerce de periféricos.
- * Cumple con arquitectura MVS, diseño consistente con Pichincha como zona de despacho y WCAG 2.2.
+ * Cumple con arquitectura MVS, diseño consistente con Pichincha como zona de despacho y accesibilidad universal.
  */
 
 import { useState } from 'react'

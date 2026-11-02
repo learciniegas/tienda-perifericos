@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { IconoPeriferico } from '../componentes/PeripheralIcon'
 
 const PREGUNTAS_FRECUENTES = [
@@ -35,8 +36,8 @@ const PREGUNTAS_FRECUENTES = [
   },
   {
     id: 6,
-    pregunta: '¿Cómo se garantiza la accesibilidad WCAG 2.2 en este sitio?',
-    respuesta: 'Toda la interfaz cumple con los estándares WCAG 2.2 Nivel AA y AAA: contraste de color superior a 7:1 en textos, navegación 100% operable por teclado, focos visibles de alto contraste y compatibilidad con lectores de pantalla.'
+    pregunta: '¿Cómo se garantiza la accesibilidad en este sitio?',
+    respuesta: 'Toda la interfaz cumple con altos estándares de accesibilidad Nivel AA y AAA: contraste de color superior a 7:1 en textos, navegación 100% operable por teclado, focos visibles de alto contraste y compatibilidad con lectores de pantalla.'
   }
 ]
 
@@ -103,9 +104,9 @@ export function PaginaPreguntasFrecuentes() {
           <IconoPeriferico tipo="shield" size={40} className="help-icon" />
           <h3>¿Necesitas asistencia?</h3>
           <p>Nuestro equipo de soporte está disponible para responder cualquier inquietud sobre tus periféricos o tu entrega en Pichincha.</p>
-          <a href="mailto:soporte@tiendaperifericos.ec" className="btn-secondary btn-full">
+          <Link to="/contacto" className="btn-secondary btn-full">
             Contactar a soporte
-          </a>
+          </Link>
         </aside>
       </div>
     </div>

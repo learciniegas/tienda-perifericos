@@ -1,7 +1,7 @@
 /**
  * VISTA: pie de página
- * Pie de página accesible y estructurado estilo Amazon.
- * Cumple con WCAG 2.2 y enfoque exclusivo en la provincia de Pichincha.
+ * Pie de página accesible y estructurado estilo tienda.
+ * Enfoque exclusivo en la provincia de Pichincha.
  */
 
 import { Link } from 'react-router-dom'
@@ -32,7 +32,7 @@ export function PieDePagina() {
             <h2 className="footer-col-title">Conócenos</h2>
             <ul className="footer-links">
               <li><Link to="/">Sobre PERIFÉRICOS</Link></li>
-              <li><Link to="/faq">Declaración de Accesibilidad (WCAG 2.2)</Link></li>
+              <li><Link to="/faq">Declaración de Accesibilidad</Link></li>
               <li><Link to="/catalogo">Catálogo de Hardware</Link></li>
               <li><a href="https://github.com" target="_blank" rel="noopener noreferrer">Repositorio del Proyecto</a></li>
             </ul>
@@ -53,7 +53,9 @@ export function PieDePagina() {
             <h2 className="footer-col-title">Atención al Cliente</h2>
             <ul className="footer-links">
               <li><Link to="/faq">Preguntas Frecuentes (FAQ)</Link></li>
+              <li><Link to="/contacto">Contacto con Soporte</Link></li>
               <li><Link to="/seguimiento">Rastrear Estado de Pedido</Link></li>
+              <li><Link to="/cuenta">Mi Cuenta y Direcciones</Link></li>
               <li><Link to="/carrito">Ver Mi Carrito</Link></li>
               <li><Link to="/faq">Garantías y Devoluciones</Link></li>
             </ul>
@@ -66,7 +68,7 @@ export function PieDePagina() {
             </p>
             <div className="footer-badge-box">
               <span className="footer-pill">Envíos a Pichincha</span>
-              <span className="footer-pill">WCAG 2.2 AA / AAA</span>
+              <span className="footer-pill">Accesibilidad AA / AAA</span>
             </div>
           </div>
 
