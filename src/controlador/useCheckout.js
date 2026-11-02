@@ -53,13 +53,13 @@ export function useCheckout() {
   const [erroresFiscal, setErroresFiscal] = useState({})
 
   // Estado de tarjeta de crédito / débito
-  const [datosTarjeta, setDatosTarjeta] = useState({
-    numero: '4242 4242 4242 4242',
-    titular: usuario?.nombre || 'Luis Morales',
-    expiracion: '12/28',
-    cvv: '123'
-  })
-  const [marcaTarjeta, setMarcaTarjeta] = useState('visa')
+  const [datosTarjeta, setDatosTarjeta] = useState(() => ({
+    numero: '',
+    titular: (usuario?.nombre && usuario.nombre !== 'Invitado') ? usuario.nombre : '',
+    expiracion: '',
+    cvv: ''
+  }))
+  const [marcaTarjeta, setMarcaTarjeta] = useState('desconocida')
   const [erroresPago, setErroresPago] = useState({})
 
   // Estado de transacción y resultado
@@ -82,15 +82,25 @@ export function useCheckout() {
         if (!activo) return
 
         setDirecciones(dirsCargadas)
-        const dirPred = dirsCargadas.find(d => d.es_predeterminada) || dirsCargadas[0]
-        if (dirPred) {
-          setDireccionSeleccionadaId(dirPred.id)
+        if (dirsCargadas.length > 0) {
+          const dirPred = dirsCargadas.find(d => d.es_predeterminada) || dirsCargadas[0]
+          if (dirPred) {
+            setDireccionSeleccionadaId(dirPred.id)
+          }
+          setModoNuevaDireccion(false)
+        } else {
+          setModoNuevaDireccion(true)
         }
 
         setDatosFiscales(fiscCargados)
-        const fiscPred = fiscCargados.find(f => f.es_predeterminado) || fiscCargados[0]
-        if (fiscPred) {
-          setFiscalSeleccionadoId(fiscPred.id)
+        if (fiscCargados.length > 0) {
+          const fiscPred = fiscCargados.find(f => f.es_predeterminado) || fiscCargados[0]
+          if (fiscPred) {
+            setFiscalSeleccionadoId(fiscPred.id)
+          }
+          setModoNuevoFiscal(false)
+        } else {
+          setModoNuevoFiscal(true)
         }
       } catch (err) {
         console.warn('Error cargando datos de checkout:', err)
@@ -230,17 +240,6 @@ export function useCheckout() {
     setDatosTarjeta(prev => ({ ...prev, [campo]: valor }))
   }, [])
 
-  const usarTarjetaPrueba = useCallback(() => {
-    setDatosTarjeta({
-      numero: '4242 4242 4242 4242',
-      titular: usuario?.nombre || 'Luis Morales',
-      expiracion: '12/28',
-      cvv: '123'
-    })
-    setMarcaTarjeta('visa')
-    setErroresPago({})
-  }, [usuario])
-
   // Confirmar compra transaccional (HU-08)
   const confirmarCompra = useCallback(async (e) => {
     if (e) e.preventDefault()
@@ -369,7 +368,6 @@ export function useCheckout() {
     marcaTarjeta,
     erroresPago,
     actualizarCampoTarjeta,
-    usarTarjetaPrueba,
 
     // Transacción y comprobante
     articulosSeleccionados,

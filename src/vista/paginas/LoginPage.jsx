@@ -18,7 +18,7 @@ export function PaginaLogin() {
   const { iniciarSesion, registrarse, recuperarContrasena } = useAutenticacion()
 
   // Modo: 'login' | 'registro' | 'recuperar'
-  const [modo, setModo] = useState('login')
+  const [modo, setModo] = useState(() => (parametrosUrl.get('mode') === 'register' ? 'registro' : 'login'))
 
   // Campos de formulario
   const [correo, setCorreo] = useState('')
@@ -114,13 +114,6 @@ export function PaginaLogin() {
       setError(err.message || 'No se pudo enviar el correo de recuperación.')
       setCargando(false)
     }
-  }
-
-  // Autocompletar credenciales de demostración en Quito
-  const autocompletarDemo = () => {
-    setCorreo('luis@ejemplo.com')
-    setContrasena('Perifericos2026!')
-    setError('')
   }
 
   return (
@@ -262,21 +255,6 @@ export function PaginaLogin() {
             >
               {cargando ? 'Validando credenciales...' : 'Iniciar sesión y continuar'}
             </button>
-
-            {/* Asistente para autocompletar credenciales en Pichincha */}
-            <div className="auth-demo-box">
-              <div className="demo-box-content">
-                <strong>¿Deseas probar con el usuario de demostración?</strong>
-                <p>Luis Morales (luis@ejemplo.com)</p>
-              </div>
-              <button
-                type="button"
-                className="btn-secondary btn-fill-demo"
-                onClick={autocompletarDemo}
-              >
-                Cargar credenciales
-              </button>
-            </div>
           </form>
         )}
 

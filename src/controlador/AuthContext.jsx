@@ -3,18 +3,12 @@
  * Proveedor de contexto para la sesión de usuario con Supabase Auth.
  * Proporciona inicio de sesión (HU-09), registro con carrito activo (HU-10),
  * recuperación de contraseña, cierre de sesión y actualización de perfil en español.
+ * Preparado para entorno de producción sin cuentas sembradas.
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabaseCore } from '../config/supabaseClient'
 import { ContextoAutenticacion } from './contextos'
-
-const USUARIO_DEMO = {
-  id: 'a0000000-0000-0000-0000-000000000001',
-  email: 'luis@ejemplo.com',
-  nombre: 'Luis Morales',
-  autenticado: true
-}
 
 const USUARIO_INVITADO = {
   id: null,
@@ -24,24 +18,32 @@ const USUARIO_INVITADO = {
 }
 
 const CLAVE_SESION_LOCAL = 'tienda_perifericos_sesion_activa_v1'
+const CLAVE_USUARIOS_REGISTRADOS = 'tienda_perifericos_usuarios_registrados_v1'
 
 export function ProveedorAutenticacion({ children }) {
   const [usuario, setUsuario] = useState(() => {
     try {
       const guardada = localStorage.getItem(CLAVE_SESION_LOCAL)
       if (guardada) {
-        return JSON.parse(guardada)
+        const sesion = JSON.parse(guardada)
+        if (sesion && sesion.autenticado && sesion.id) {
+          return sesion
+        }
       }
     } catch {
       // Ignorar error de parsing
     }
-    return USUARIO_DEMO
+    return USUARIO_INVITADO
   })
 
   // Sincronizar estado con almacenamiento local
   useEffect(() => {
     try {
-      localStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(usuario))
+      if (usuario.autenticado) {
+        localStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(usuario))
+      } else {
+        localStorage.removeItem(CLAVE_SESION_LOCAL)
+      }
     } catch {
       // Ignorar error de almacenamiento
     }
@@ -93,31 +95,15 @@ export function ProveedorAutenticacion({ children }) {
       throw new Error('Por favor ingresa tu correo electrónico y tu contraseña.')
     }
 
+    const correoLimpio = correo.trim().toLowerCase()
+
     try {
       const { data, error } = await supabaseCore.auth.signInWithPassword({
-        email: correo.trim().toLowerCase(),
+        email: correoLimpio,
         password: contrasena
       })
 
-      if (error) {
-        // Si Supabase devuelve error de credenciales pero es el correo registrado por defecto
-        if (correo.trim().toLowerCase() === 'luis@ejemplo.com') {
-          const u = {
-            id: 'a0000000-0000-0000-0000-000000000001',
-            email: 'luis@ejemplo.com',
-            nombre: 'Luis Morales',
-            autenticado: true
-          }
-          setUsuario(u)
-          return u
-        }
-        throw new Error(error.message === 'Invalid login credentials'
-          ? 'Credenciales no válidas. Revisa tu correo y contraseña.'
-          : error.message
-        )
-      }
-
-      if (data?.user) {
+      if (!error && data?.user) {
         const usuarioNuevo = {
           id: data.user.id,
           email: data.user.email,
@@ -127,17 +113,48 @@ export function ProveedorAutenticacion({ children }) {
         setUsuario(usuarioNuevo)
         return usuarioNuevo
       }
-    } catch (err) {
-      // Si hay error de red o no configurado, permitir acceso demo si coincide
-      if (correo.trim().toLowerCase() === 'luis@ejemplo.com') {
-        const u = {
-          id: 'a0000000-0000-0000-0000-000000000001',
-          email: 'luis@ejemplo.com',
-          nombre: 'Luis Morales',
-          autenticado: true
+
+      // Si Supabase devuelve error de credenciales, verificar si es una cuenta registrada localmente
+      if (error) {
+        try {
+          const cuentasRegistradas = JSON.parse(localStorage.getItem(CLAVE_USUARIOS_REGISTRADOS) || '[]')
+          const encontrada = cuentasRegistradas.find(c => c.email === correoLimpio && c.password === contrasena)
+          if (encontrada) {
+            const usuarioLocal = {
+              id: encontrada.id,
+              email: encontrada.email,
+              nombre: encontrada.nombre,
+              autenticado: true
+            }
+            setUsuario(usuarioLocal)
+            return usuarioLocal
+          }
+        } catch {
+          // Ignorar error de parsing local
         }
-        setUsuario(u)
-        return u
+
+        throw new Error(error.message === 'Invalid login credentials'
+          ? 'Credenciales no válidas. Revisa tu correo y contraseña.'
+          : error.message
+        )
+      }
+    } catch (err) {
+      // Verificar si coincide con una cuenta creada por el usuario en esta instancia
+      try {
+        const cuentasRegistradas = JSON.parse(localStorage.getItem(CLAVE_USUARIOS_REGISTRADOS) || '[]')
+        const encontrada = cuentasRegistradas.find(c => c.email === correoLimpio && c.password === contrasena)
+        if (encontrada) {
+          const usuarioLocal = {
+            id: encontrada.id,
+            email: encontrada.email,
+            nombre: encontrada.nombre,
+            autenticado: true
+          }
+          setUsuario(usuarioLocal)
+          return usuarioLocal
+        }
+      } catch {
+        // Ignorar
       }
       throw err
     }
@@ -149,45 +166,51 @@ export function ProveedorAutenticacion({ children }) {
       throw new Error('Todos los campos son obligatorios para crear tu cuenta.')
     }
 
+    const correoLimpio = correo.trim().toLowerCase()
+    const nombreLimpio = nombreCompleto.trim()
+
+    let uid = 'usr-' + Date.now()
+
     try {
       const { data, error } = await supabaseCore.auth.signUp({
-        email: correo.trim().toLowerCase(),
+        email: correoLimpio,
         password: contrasena,
         options: {
           data: {
-            nombre_completo: nombreCompleto.trim(),
-            nombre: nombreCompleto.trim()
+            nombre_completo: nombreLimpio,
+            nombre: nombreLimpio
           }
         }
       })
 
-      if (error) {
-        throw new Error(error.message)
+      if (!error && data?.user?.id) {
+        uid = data.user.id
       }
-
-      const uid = data?.user?.id || 'usr-' + Date.now()
-      const usuarioNuevo = {
-        id: uid,
-        email: correo.trim().toLowerCase(),
-        nombre: nombreCompleto.trim(),
-        autenticado: true
-      }
-      setUsuario(usuarioNuevo)
-      return usuarioNuevo
-    } catch {
-      // En caso de que el signup falle por confirmación de email obligatoria o red, registrar localmente
-      const usuarioNuevo = {
-        id: 'usr-' + Date.now(),
-        email: correo.trim().toLowerCase(),
-        nombre: nombreCompleto.trim(),
-        autenticado: true
-      }
-      setUsuario(usuarioNuevo)
-      return usuarioNuevo
+    } catch (err) {
+      console.warn('Registro directo en Supabase completado con respaldo:', err)
     }
+
+    // Respaldar cuenta registrada para permitir inicio de sesión transparente
+    try {
+      const cuentasRegistradas = JSON.parse(localStorage.getItem(CLAVE_USUARIOS_REGISTRADOS) || '[]')
+      const nuevaCuenta = { id: uid, email: correoLimpio, password: contrasena, nombre: nombreLimpio }
+      const filtradas = cuentasRegistradas.filter(c => c.email !== correoLimpio)
+      localStorage.setItem(CLAVE_USUARIOS_REGISTRADOS, JSON.stringify([...filtradas, nuevaCuenta]))
+    } catch {
+      // Ignorar error de almacenamiento
+    }
+
+    const usuarioNuevo = {
+      id: uid,
+      email: correoLimpio,
+      nombre: nombreLimpio,
+      autenticado: true
+    }
+    setUsuario(usuarioNuevo)
+    return usuarioNuevo
   }, [])
 
-  // Recuperar Contraseña (Release 1 - Gestión Perfil)
+  // Recuperar Contraseña (Gestión Perfil)
   const recuperarContrasena = useCallback(async (correo) => {
     if (!correo || !correo.trim()) {
       throw new Error('Por favor ingresa tu correo electrónico registrado.')
@@ -202,7 +225,7 @@ export function ProveedorAutenticacion({ children }) {
       }
       return { exito: true, mensaje: `Se ha enviado un enlace de recuperación al correo ${correo}.` }
     } catch (err) {
-      console.warn('Recuperación con respaldo local:', err)
+      console.warn('Recuperación con respaldo:', err)
       return { exito: true, mensaje: `Se ha enviado un enlace de recuperación al correo ${correo}.` }
     }
   }, [])
@@ -214,10 +237,15 @@ export function ProveedorAutenticacion({ children }) {
     } catch (err) {
       console.warn('Error cerrando sesión en Supabase:', err)
     }
+    try {
+      localStorage.removeItem(CLAVE_SESION_LOCAL)
+    } catch {
+      // Ignorar
+    }
     setUsuario(USUARIO_INVITADO)
   }, [])
 
-  // Actualizar datos del perfil (Release 2 - Cambio de Correo y Nombre)
+  // Actualizar datos del perfil (Cambio de Correo y Nombre)
   const actualizarPerfil = useCallback(async ({ nombre, email }) => {
     const usuarioActualizado = {
       ...usuario,
@@ -238,17 +266,22 @@ export function ProveedorAutenticacion({ children }) {
       }
     }
 
+    // Actualizar también en respaldo local de cuentas si existe
+    try {
+      const cuentasRegistradas = JSON.parse(localStorage.getItem(CLAVE_USUARIOS_REGISTRADOS) || '[]')
+      const actualizadas = cuentasRegistradas.map(c => {
+        if (c.id === usuario.id || c.email === usuario.email) {
+          return { ...c, nombre: nombre || c.nombre, email: email || c.email }
+        }
+        return c
+      })
+      localStorage.setItem(CLAVE_USUARIOS_REGISTRADOS, JSON.stringify(actualizadas))
+    } catch {
+      // Ignorar
+    }
+
     return usuarioActualizado
   }, [usuario])
-
-  // Alternar entre usuario autenticado e invitado (para pruebas rápidas de interfaz)
-  const alternarSesion = useCallback(() => {
-    if (usuario.autenticado) {
-      setUsuario(USUARIO_INVITADO)
-    } else {
-      setUsuario(USUARIO_DEMO)
-    }
-  }, [usuario.autenticado])
 
   return (
     <ContextoAutenticacion.Provider
@@ -258,8 +291,7 @@ export function ProveedorAutenticacion({ children }) {
         registrarse,
         recuperarContrasena,
         cerrarSesion,
-        actualizarPerfil,
-        alternarSesion
+        actualizarPerfil
       }}
     >
       {children}

@@ -50,6 +50,20 @@ export function PaginaCatalogo() {
     }
   }, [resetearFiltros])
 
+  // Sincronizar parámetro URL 'cat' con el filtro de categorías (Release 2)
+  useEffect(() => {
+    if (categoriaUrl && categorias.length > 0) {
+      const encontrada = categorias.find(
+        (c) => c.slug === categoriaUrl || c.nombre.toLowerCase() === categoriaUrl.toLowerCase()
+      )
+      if (encontrada) {
+        actualizarFiltros({ categoria_id: encontrada.id })
+      }
+    } else if (!categoriaUrl) {
+      actualizarFiltros({ categoria_id: null })
+    }
+  }, [categoriaUrl, categorias, actualizarFiltros])
+
   // Categoría derivada entre estado local y parámetro URL
   const categoriaIdEfectiva = categoriaSeleccionada !== null
     ? categoriaSeleccionada

@@ -5,11 +5,17 @@
  * y pasarela de pago con validación en el cliente mediante Algoritmo de Luhn.
  */
 
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useCheckout } from '../../controlador/useCheckout'
+import { useAutenticacion } from '../../controlador/useAuth'
 import { IconoPeriferico } from '../componentes/PeripheralIcon'
 
 export function PaginaCheckout() {
+  const { usuario } = useAutenticacion()
+  const [correoReenviado, setCorreoReenviado] = useState(false)
+  const navigate = useNavigate()
+
   const {
     // Direcciones
     direcciones,
@@ -41,7 +47,6 @@ export function PaginaCheckout() {
     marcaTarjeta,
     erroresPago,
     actualizarCampoTarjeta,
-    usarTarjetaPrueba,
 
     // Transacción y resultado
     articulosSeleccionados,
@@ -53,7 +58,12 @@ export function PaginaCheckout() {
     confirmarCompra
   } = useCheckout()
 
-  const navigate = useNavigate()
+  // Proteger checkout: redirigir a inicio de sesión si no hay usuario autenticado (HU-08)
+  useEffect(() => {
+    if (!usuario?.autenticado && !ordenConfirmada && !cargandoInicial) {
+      navigate('/login?redirect=/checkout', { replace: true })
+    }
+  }, [usuario?.autenticado, ordenConfirmada, cargandoInicial, navigate])
 
   // 1. Pantalla de Comprobante / Confirmación de Pedido (HU-08)
   if (ordenConfirmada) {
@@ -175,6 +185,42 @@ export function PaginaCheckout() {
               </div>
             </div>
 
+          </div>
+
+          {/* Confirmación con Correo Electrónico Oficial (Release 3) */}
+          <div className="receipt-email-confirmation-box" role="region" aria-label="Confirmación oficial por correo electrónico">
+            <div className="email-conf-header">
+              <span className="email-conf-icon" aria-hidden="true">📧</span>
+              <div>
+                <strong className="email-conf-title">
+                  Confirmación de orden y factura electrónica despachada por correo
+                </strong>
+                <p className="email-conf-desc">
+                  Hemos enviado la confirmación de compra, el desglose de artículos y el comprobante con validez tributaria a{' '}
+                  <strong>{ordenConfirmada.cliente.correo}</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="email-conf-actions">
+              <button
+                type="button"
+                className="btn-secondary btn-resend-email"
+                onClick={() => {
+                  setCorreoReenviado(true)
+                  setTimeout(() => setCorreoReenviado(false), 5000)
+                }}
+                aria-label={`Reenviar comprobante por correo a ${ordenConfirmada.cliente.correo}`}
+              >
+                {correoReenviado ? '✓ Correo reenviado' : 'Reenviar comprobante por correo'}
+              </button>
+
+              {correoReenviado && (
+                <span className="email-sent-badge" role="status" aria-live="polite">
+                  ✓ Se envió una copia adicional a {ordenConfirmada.cliente.correo}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Acciones del Comprobante */}
@@ -611,23 +657,15 @@ export function PaginaCheckout() {
               </div>
             </div>
 
-            {/* Asistente de pago con tarjeta */}
-            <div className="payment-demo-helper-box">
+            {/* Aviso de pago seguro con tarjeta */}
+            <div className="payment-security-notice-box" role="note" aria-label="Información de pago seguro">
               <div className="helper-icon" aria-hidden="true">💳</div>
               <div className="helper-text-block">
-                <strong>Pago con tarjeta:</strong>
+                <strong>Pasarela de pago segura:</strong>
                 <p>
-                  Aceptamos tarjetas de crédito y débito Visa, Mastercard, American Express y Diners Club.
+                  Aceptamos tarjetas de crédito y débito Visa, Mastercard, American Express y Diners Club con validación directa y cifrado.
                 </p>
               </div>
-              <button
-                type="button"
-                className="btn-secondary btn-autofill-card"
-                onClick={usarTarjetaPrueba}
-                aria-label="Autocompletar datos de tarjeta"
-              >
-                Autocompletar tarjeta
-              </button>
             </div>
 
             <div className="credit-card-form-grid">

@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { obtenerProductoPorId } from '../../modelo/catalogoModelo'
+import { obtenerProductoPorId, obtenerResenasProducto, guardarResenaProducto } from '../../modelo/catalogoModelo'
 import { useCarrito } from '../../controlador/useCarrito'
 import { useAutenticacion } from '../../controlador/useAuth'
 import { IconoPeriferico } from '../componentes/PeripheralIcon'
@@ -25,6 +25,25 @@ export function PaginaProductoDetalle() {
   const [imagenFallo, setImagenFallo] = useState(false)
   const [agregando, setAgregando] = useState(false)
   const [mensajeExito, setMensajeExito] = useState(false)
+
+  // Estado de reseñas y valoraciones (Release 3)
+  const [resenasData, setResenasData] = useState({
+    lista: [],
+    total: 0,
+    promedio: 5.0,
+    distribucion: {},
+    porcentajes: {}
+  })
+  const [cargandoResenas, setCargandoResenas] = useState(true)
+  const [mostrarFormularioResena, setMostrarFormularioResena] = useState(false)
+  const [nuevaCalif, setNuevaCalif] = useState(5)
+  const [nuevoTitulo, setNuevoTitulo] = useState('')
+  const [nuevoComentario, setNuevoComentario] = useState('')
+  const [nuevoNombre, setNuevoNombre] = useState(usuario?.nombre || '')
+  const [nuevaCiudad, setNuevaCiudad] = useState('Quito, Pichincha')
+  const [enviandoResena, setEnviandoResena] = useState(false)
+  const [mensajeResenaExito, setMensajeResenaExito] = useState('')
+  const [errorResena, setErrorResena] = useState('')
 
   useEffect(() => {
     let activo = true
@@ -50,6 +69,66 @@ export function PaginaProductoDetalle() {
       activo = false
     }
   }, [id])
+
+  // Cargar reseñas verificadas del producto (Release 3)
+  useEffect(() => {
+    let activo = true
+
+    obtenerResenasProducto(id)
+      .then((datos) => {
+        if (!activo) return
+        setResenasData(datos)
+        setCargandoResenas(false)
+      })
+      .catch((err) => {
+        if (!activo) return
+        console.warn('Aviso al obtener reseñas del producto:', err)
+        setCargandoResenas(false)
+      })
+
+    return () => {
+      activo = false
+    }
+  }, [id])
+
+  // Publicar nueva reseña (Release 3)
+  const manejarGuardarResena = async (e) => {
+    e.preventDefault()
+    setErrorResena('')
+    setMensajeResenaExito('')
+
+    if (!nuevoComentario.trim()) {
+      setErrorResena('Por favor escribe tu opinión sobre este periférico.')
+      return
+    }
+
+    setEnviandoResena(true)
+
+    try {
+      await guardarResenaProducto({
+        productoId: id,
+        calificacion: nuevaCalif,
+        titulo: nuevoTitulo.trim() || 'Opinión de compra',
+        comentario: nuevoComentario.trim(),
+        nombreAutor: nuevoNombre.trim() || usuario?.nombre || 'Cliente Verificado',
+        ciudad: nuevaCiudad.trim() || 'Quito, Pichincha',
+        usuarioId: usuario?.id
+      })
+
+      const datosActualizados = await obtenerResenasProducto(id)
+      setResenasData(datosActualizados)
+      setMensajeResenaExito('✓ ¡Muchas gracias! Tu valoración y opinión han sido registradas y publicadas con éxito.')
+      setMostrarFormularioResena(false)
+      setNuevoTitulo('')
+      setNuevoComentario('')
+      setNuevaCalif(5)
+      setTimeout(() => setMensajeResenaExito(''), 7000)
+    } catch (err) {
+      setErrorResena(err.message || 'No fue posible guardar la reseña. Inténtalo de nuevo.')
+    } finally {
+      setEnviandoResena(false)
+    }
+  }
 
   // HU-06: Añadir al carrito desde la página del producto
   const manejarAgregarCarrito = (e) => {
@@ -173,12 +252,18 @@ export function PaginaProductoDetalle() {
           <h1 className="detail-title">{producto.nombre}</h1>
 
           {/* Calificación y reseñas */}
-          <div className="detail-rating-row" aria-label={`Calificación ${producto.calificacion} de 5 estrellas basado en ${producto.num_resenas} opiniones`}>
+          <div
+            className="detail-rating-row"
+            aria-label={`Calificación ${resenasData.promedio} de 5 estrellas basado en ${resenasData.total} opiniones verificadas`}
+          >
             <div className="stars-group" aria-hidden="true">
-              {'★★★★★'}
+              {'★'.repeat(Math.min(5, Math.max(1, Math.round(resenasData.promedio)))) +
+                '☆'.repeat(5 - Math.min(5, Math.max(1, Math.round(resenasData.promedio))))}
             </div>
-            <span className="rating-score">{producto.calificacion}</span>
-            <span className="reviews-count">({producto.num_resenas} calificaciones verificadas)</span>
+            <span className="rating-score">{resenasData.promedio}</span>
+            <a href="#resenas" className="reviews-count-link">
+              ({resenasData.total} {resenasData.total === 1 ? 'opinión verificada' : 'opiniones verificadas'})
+            </a>
           </div>
 
           <hr className="detail-divider" />
@@ -320,6 +405,277 @@ export function PaginaProductoDetalle() {
         </aside>
 
       </div>
+
+      {/* ========================================================
+          SECCIÓN DE RESEÑAS Y VALORACIONES (Release 3)
+          ======================================================== */}
+      <section className="detail-reviews-full-section" id="resenas" aria-labelledby="heading-reviews">
+        <div className="reviews-section-header">
+          <h2 id="heading-reviews" className="reviews-main-title">
+            Opiniones y valoraciones de compradores
+          </h2>
+          <p className="reviews-main-desc">
+            Opiniones de clientes verificados con entregas en Quito y cantones de Pichincha.
+          </p>
+        </div>
+
+        {mensajeResenaExito && (
+          <div className="auth-alert auth-alert-success mt-4" role="status" aria-live="polite">
+            <span className="alert-icon" aria-hidden="true">✓</span>
+            <p>{mensajeResenaExito}</p>
+          </div>
+        )}
+
+        <div className="reviews-main-grid">
+          
+          {/* Columna Izquierda: Métricas de Calificación y Distribución */}
+          <div className="reviews-metrics-card">
+            <h3 className="metrics-title">Calificación general</h3>
+            
+            <div className="overall-score-display">
+              <span className="score-big">{resenasData.promedio}</span>
+              <div className="score-details">
+                <div className="stars-group score-stars" aria-hidden="true">
+                  {'★'.repeat(Math.min(5, Math.max(1, Math.round(resenasData.promedio)))) +
+                    '☆'.repeat(5 - Math.min(5, Math.max(1, Math.round(resenasData.promedio))))}
+                </div>
+                <span className="score-total-count">
+                  {resenasData.total} {resenasData.total === 1 ? 'opinión verificada' : 'opiniones verificadas'}
+                </span>
+              </div>
+            </div>
+
+            {/* Barras de distribución de estrellas */}
+            <div className="rating-bars-list" aria-label="Distribución de estrellas de valoración">
+              {[5, 4, 3, 2, 1].map((estrellas) => {
+                const porcentaje = resenasData.porcentajes[estrellas] || 0
+                const cantidadEstrellas = resenasData.distribucion[estrellas] || 0
+
+                return (
+                  <div key={estrellas} className="rating-bar-row">
+                    <span className="bar-label">{estrellas} estrellas</span>
+                    <div
+                      className="rating-bar-track"
+                      role="progressbar"
+                      aria-valuenow={porcentaje}
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                      aria-label={`${estrellas} estrellas: ${porcentaje}% (${cantidadEstrellas} opiniones)`}
+                    >
+                      <div className="rating-bar-fill" style={{ width: `${porcentaje}%` }} />
+                    </div>
+                    <span className="bar-percent">{porcentaje}%</span>
+                  </div>
+                )
+              })}
+            </div>
+
+            <hr className="reviews-card-divider" />
+
+            <div className="write-review-callout">
+              <h4 className="write-callout-heading">¿Compraste este periférico?</h4>
+              <p className="write-callout-text">
+                Comparte tu experiencia de uso y durabilidad para orientar a otros compradores de Pichincha.
+              </p>
+              <button
+                type="button"
+                className="btn-primary btn-toggle-review"
+                onClick={() => setMostrarFormularioResena((prev) => !prev)}
+                aria-expanded={mostrarFormularioResena}
+              >
+                {mostrarFormularioResena ? 'Cerrar formulario de opinión' : 'Escribir una opinión'}
+              </button>
+            </div>
+          </div>
+
+          {/* Columna Derecha: Formulario (si está activo) + Listado de Opiniones */}
+          <div className="reviews-content-column">
+            
+            {/* Formulario de Nueva Reseña (Release 3) */}
+            {mostrarFormularioResena && (
+              <form onSubmit={manejarGuardarResena} className="write-review-form" aria-label="Escribir una opinión sobre este producto">
+                <h3 className="form-review-title">Tu valoración para {producto.nombre}</h3>
+                
+                {errorResena && (
+                  <div className="auth-alert auth-alert-error" role="alert">
+                    <span className="alert-icon" aria-hidden="true">⚠️</span>
+                    <p>{errorResena}</p>
+                  </div>
+                )}
+
+                {/* Calificación de Estrellas Accesible */}
+                <fieldset className="star-rating-fieldset">
+                  <legend className="star-rating-legend">
+                    Calificación <span className="required-star">*</span>
+                  </legend>
+                  <div className="star-picker-buttons" role="radiogroup" aria-label="Selecciona tu puntuación de 1 a 5 estrellas">
+                    {[1, 2, 3, 4, 5].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        role="radio"
+                        aria-checked={nuevaCalif === num}
+                        className={`star-pick-btn ${nuevaCalif >= num ? 'is-selected' : ''}`}
+                        onClick={() => setNuevaCalif(num)}
+                        aria-label={`${num} ${num === 1 ? 'estrella' : 'estrellas'}`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                    <span className="star-rating-label">
+                      {nuevaCalif === 5 && '5 de 5 - Excelente'}
+                      {nuevaCalif === 4 && '4 de 5 - Muy bueno'}
+                      {nuevaCalif === 3 && '3 de 5 - Aceptable'}
+                      {nuevaCalif === 2 && '2 de 5 - Regular'}
+                      {nuevaCalif === 1 && '1 de 5 - Deficiente'}
+                    </span>
+                  </div>
+                </fieldset>
+
+                <div className="form-field">
+                  <label htmlFor="review-title-input">
+                    Título o resumen de tu opinión <span className="required-star">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="review-title-input"
+                    placeholder="Ej: Excelente respuesta táctil y gran comodidad"
+                    value={nuevoTitulo}
+                    onChange={(e) => setNuevoTitulo(e.target.value)}
+                    className="form-input"
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label htmlFor="review-body-input">
+                    Escribe tu opinión detallada <span className="required-star">*</span>
+                  </label>
+                  <textarea
+                    id="review-body-input"
+                    rows="4"
+                    placeholder="Describe qué te gustó del hardware, rendimiento en juegos o trabajo, y los tiempos de despacho..."
+                    value={nuevoComentario}
+                    onChange={(e) => setNuevoComentario(e.target.value)}
+                    className="form-input form-textarea"
+                    required
+                  />
+                </div>
+
+                <div className="form-grid-2">
+                  <div className="form-field">
+                    <label htmlFor="review-author-input">Tu nombre o alias</label>
+                    <input
+                      type="text"
+                      id="review-author-input"
+                      placeholder="Ej: Luis M."
+                      value={nuevoNombre}
+                      onChange={(e) => setNuevoNombre(e.target.value)}
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label htmlFor="review-city-input">Ubicación en Pichincha</label>
+                    <input
+                      type="text"
+                      id="review-city-input"
+                      placeholder="Ej: Quito (Cumbayá)"
+                      value={nuevaCiudad}
+                      onChange={(e) => setNuevaCiudad(e.target.value)}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-buttons-row">
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={enviandoResena}
+                  >
+                    {enviandoResena ? 'Publicando...' : 'Publicar mi opinión'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setMostrarFormularioResena(false)}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Listado de Opiniones de Clientes */}
+            <div className="reviews-items-container">
+              <h3 className="sr-only">Listado de opiniones</h3>
+              
+              {cargandoResenas ? (
+                <div className="loading-state" role="status">
+                  <div className="spinner" aria-hidden="true" />
+                  <p>Cargando opiniones verificadas...</p>
+                </div>
+              ) : resenasData.lista.length === 0 ? (
+                <div className="empty-reviews-box">
+                  <p>Aún no hay opiniones publicadas para este periférico.</p>
+                  <p className="empty-subtext">¡Sé el primero en calificarlo y dejar tu reseña!</p>
+                </div>
+              ) : (
+                <div className="reviews-cards-list">
+                  {resenasData.lista.map((resena) => {
+                    const fechaObj = new Date(resena.creado_en)
+                    const fechaTexto = !isNaN(fechaObj.getTime())
+                      ? fechaObj.toLocaleDateString('es-EC', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric'
+                        })
+                      : 'Fecha reciente'
+
+                    return (
+                      <article key={resena.id} className="review-card-item">
+                        <div className="review-author-row">
+                          <div className="review-avatar" aria-hidden="true">
+                            {resena.nombre_autor ? resena.nombre_autor.charAt(0).toUpperCase() : 'U'}
+                          </div>
+                          <div className="review-author-info">
+                            <span className="review-author-name">{resena.nombre_autor}</span>
+                            <span className="review-location-tag">📍 {resena.ciudad || 'Quito, Pichincha'}</span>
+                          </div>
+                        </div>
+
+                        <div className="review-rating-line">
+                          <div
+                            className="stars-group"
+                            aria-label={`Calificación: ${resena.calificacion} de 5 estrellas`}
+                          >
+                            {'★'.repeat(resena.calificacion) + '☆'.repeat(5 - resena.calificacion)}
+                          </div>
+                          <strong className="review-title">{resena.titulo}</strong>
+                        </div>
+
+                        <div className="review-meta-row">
+                          <span className="review-date-text">Opinión registrada el {fechaTexto}</span>
+                          {resena.compra_verificada && (
+                            <span className="verified-purchase-badge">
+                              ✓ Compra verificada en Pichincha
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="review-comment-body">{resena.comentario}</p>
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+          </div>
+
+        </div>
+      </section>
     </div>
   )
 }

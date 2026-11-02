@@ -15,8 +15,8 @@ const TARJETAS_DESTACADAS = [
     link: '/catalogo?cat=teclados',
     linkTexto: 'Ver todos los teclados',
     subarticulos: [
-      { nombre: 'Corsair K70', precio: '$139', icono: 'keyboard' },
-      { nombre: 'Redragon Kumara', precio: '$39.90', icono: 'keyboard' }
+      { id: 4, nombre: 'Corsair K70', precio: '$139.00', icono: 'keyboard', link: '/producto/4' },
+      { id: 5, nombre: 'Redragon Kumara', precio: '$39.90', icono: 'keyboard', link: '/producto/5' }
     ]
   },
   {
@@ -27,8 +27,8 @@ const TARJETAS_DESTACADAS = [
     link: '/catalogo?cat=ratones',
     linkTexto: 'Explorar ratones ópticos',
     subarticulos: [
-      { nombre: 'Logitech G502', precio: '$59.99', icono: 'mouse' },
-      { nombre: 'Razer DeathAdder', precio: '$34.90', icono: 'mouse' }
+      { id: 1, nombre: 'Logitech G502', precio: '$59.99', icono: 'mouse', link: '/producto/1' },
+      { id: 2, nombre: 'Razer DeathAdder', precio: '$34.90', icono: 'mouse', link: '/producto/2' }
     ]
   },
   {
@@ -39,8 +39,8 @@ const TARJETAS_DESTACADAS = [
     link: '/catalogo?cat=auriculares',
     linkTexto: 'Descubrir auriculares',
     subarticulos: [
-      { nombre: 'HyperX Cloud II', precio: '$89.99', icono: 'headset' },
-      { nombre: 'Razer Kraken X', precio: '$49.99', icono: 'headset' }
+      { id: 7, nombre: 'HyperX Cloud II', precio: '$89.99', icono: 'headset', link: '/producto/7' },
+      { id: 8, nombre: 'Razer Kraken X', precio: '$49.99', icono: 'headset', link: '/producto/8' }
     ]
   },
   {
@@ -51,8 +51,8 @@ const TARJETAS_DESTACADAS = [
     link: '/catalogo?cat=webcams',
     linkTexto: 'Mejorar mi setup',
     subarticulos: [
-      { nombre: 'Logitech C920', precio: '$69.99', icono: 'webcam' },
-      { nombre: 'Corsair MM300', precio: '$29.99', icono: 'mousepad' }
+      { id: 9, nombre: 'Logitech C920', precio: '$69.99', icono: 'webcam', link: '/producto/9' },
+      { id: 10, nombre: 'Corsair MM300', precio: '$29.99', icono: 'mousepad', link: '/producto/10' }
     ]
   }
 ]
@@ -76,12 +76,17 @@ export function TarjetasDestacadas() {
               </div>
 
               <div className="card-subitems-row">
-                {tarjeta.subarticulos.map((articulo, indice) => (
-                  <div key={indice} className="card-mini-tile">
+                {tarjeta.subarticulos.map((articulo) => (
+                  <Link
+                    key={articulo.id}
+                    to={articulo.link}
+                    className="card-mini-tile card-mini-tile-link"
+                    aria-label={`Ver producto ${articulo.nombre} por ${articulo.precio}`}
+                  >
                     <IconoPeriferico tipo={articulo.icono} size={28} />
                     <span className="mini-name">{articulo.nombre}</span>
                     <span className="mini-price">{articulo.precio}</span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </div>

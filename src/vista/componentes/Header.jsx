@@ -13,7 +13,7 @@ import { IconoPeriferico } from './PeripheralIcon'
 
 export function Encabezado() {
   const { cantidadTotal } = useCarrito()
-  const { usuario, alternarSesion } = useAutenticacion()
+  const { usuario, cerrarSesion } = useAutenticacion()
   const [terminoBusqueda, setTerminoBusqueda] = useState('')
   const [categoriaFiltro, setCategoriaFiltro] = useState('')
   const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false)
@@ -63,7 +63,9 @@ export function Encabezado() {
           <div className="nav-delivery-widget" tabIndex="0" role="region" aria-label="Zona de cobertura de envíos">
             <span className="nav-icon-pin" aria-hidden="true">📍</span>
             <div className="nav-delivery-text">
-              <span className="nav-line-1">Enviar a {usuario.nombre}</span>
+              <span className="nav-line-1">
+                {usuario.autenticado ? `Enviar a ${usuario.nombre}` : 'Entregas en'}
+              </span>
               <span className="nav-line-2">Pichincha, Ecuador</span>
             </div>
           </div>
@@ -121,9 +123,11 @@ export function Encabezado() {
               onClick={() => setMenuUsuarioAbierto(prev => !prev)}
               aria-expanded={menuUsuarioAbierto}
               aria-haspopup="true"
-              aria-label={`Cuenta de ${usuario.nombre}. Opciones de usuario`}
+              aria-label={usuario.autenticado ? `Cuenta de ${usuario.nombre}. Opciones de usuario` : 'Identifícate o crea tu cuenta'}
             >
-              <span className="nav-line-1">Hola, {usuario.nombre}</span>
+              <span className="nav-line-1">
+                {usuario.autenticado ? `Hola, ${usuario.nombre}` : 'Hola, Identifícate'}
+              </span>
               <span className="nav-line-2">
                 Cuenta y Pedidos <span className="nav-arrow-indicator" aria-hidden="true">▾</span>
               </span>
@@ -140,7 +144,7 @@ export function Encabezado() {
                   ) : (
                     <>
                       <p>Modo: <strong>Invitado</strong></p>
-                      <p className="pichincha-user-zone">Inicia sesión para guardar pedidos</p>
+                      <p className="pichincha-user-zone">Inicia sesión para guardar tus pedidos</p>
                     </>
                   )}
                 </div>
@@ -164,11 +168,18 @@ export function Encabezado() {
                       </li>
                     </>
                   ) : (
-                    <li>
-                      <Link to="/login" onClick={() => setMenuUsuarioAbierto(false)} className="flyout-login-highlight">
-                        🔑 Iniciar Sesión / Registrarse
-                      </Link>
-                    </li>
+                    <>
+                      <li>
+                        <Link to="/login" onClick={() => setMenuUsuarioAbierto(false)} className="flyout-login-highlight">
+                          🔑 Iniciar Sesión
+                        </Link>
+                      </li>
+                      <li>
+                        <Link to="/login?mode=register" onClick={() => setMenuUsuarioAbierto(false)}>
+                          Crear cuenta nueva
+                        </Link>
+                      </li>
+                    </>
                   )}
                   <li>
                     <Link to="/seguimiento" onClick={() => setMenuUsuarioAbierto(false)}>
@@ -185,18 +196,20 @@ export function Encabezado() {
                       Contacto con Soporte
                     </Link>
                   </li>
-                  <li className="flyout-action-separator">
-                    <button
-                      type="button"
-                      className="flyout-action-btn"
-                      onClick={() => {
-                        alternarSesion()
-                        setMenuUsuarioAbierto(false)
-                      }}
-                    >
-                      {usuario.autenticado ? 'Cambiar a modo Invitado' : 'Acceso rápido como Luis'}
-                    </button>
-                  </li>
+                  {usuario.autenticado && (
+                    <li className="flyout-action-separator">
+                      <button
+                        type="button"
+                        className="flyout-action-btn"
+                        onClick={async () => {
+                          await cerrarSesion()
+                          setMenuUsuarioAbierto(false)
+                        }}
+                      >
+                        Cerrar sesión
+                      </button>
+                    </li>
+                  )}
                 </ul>
               </div>
             )}

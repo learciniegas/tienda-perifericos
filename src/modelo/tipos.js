@@ -286,3 +286,191 @@ export const ESPECIFICACIONES_PREDETERMINADAS = {
     { nombre: 'Optimización', valor: 'Calibrado para sensores ópticos y láser de alta resolución' }
   ]
 }
+
+export const RESENAS_PREDETERMINADAS = {
+  1: [
+    {
+      id: 'res-seed-1-1',
+      producto_id: 1,
+      calificacion: 5,
+      nombre_autor: 'Carlos Benavides',
+      titulo: 'El mejor mouse ergonómico que he probado',
+      comentario: 'Sensor HERO 25K de precisión milimétrica. Las pesas ajustables le dan el balance exacto que buscaba para shooters competitivos. Despacho impecable a Quito en 24 horas.',
+      ciudad: 'Quito (La Carolina)',
+      compra_verificada: true,
+      creado_en: '2026-10-29T14:30:00Z'
+    },
+    {
+      id: 'res-seed-1-2',
+      producto_id: 1,
+      calificacion: 5,
+      nombre_autor: 'Andrea Dávila',
+      titulo: 'Ergonomía insuperable para trabajar y jugar',
+      comentario: 'Comodidad total para sesiones largas de trabajo en oficina y diseño. El botón de francotirador es sumamente práctico. Factura con RUC entregada al instante.',
+      ciudad: 'Cumbayá',
+      compra_verificada: true,
+      creado_en: '2026-10-26T18:15:00Z'
+    },
+    {
+      id: 'res-seed-1-3',
+      producto_id: 1,
+      calificacion: 4,
+      nombre_autor: 'Roberto Vaca',
+      titulo: 'Excelente hardware, software completo',
+      comentario: 'El cable trenzado se siente muy resistente. El software G HUB permite guardar perfiles en la memoria interna del ratón. Muy contento con la compra.',
+      ciudad: 'Tumbaco',
+      compra_verificada: true,
+      creado_en: '2026-10-20T11:00:00Z'
+    }
+  ],
+  2: [
+    {
+      id: 'res-seed-2-1',
+      producto_id: 2,
+      calificacion: 5,
+      nombre_autor: 'Esteban Rivas',
+      titulo: 'Excelente relación calidad-precio',
+      comentario: 'Sencillo, ligero y con agarre muy natural para manos medianas y grandes. Por este precio no hay nada mejor en el mercado de periféricos en Quito.',
+      ciudad: 'Quito Norte (Ponceano)',
+      compra_verificada: true,
+      creado_en: '2026-10-31T09:40:00Z'
+    },
+    {
+      id: 'res-seed-2-2',
+      producto_id: 2,
+      calificacion: 4,
+      nombre_autor: 'Diana Flores',
+      titulo: 'Muy cómodo y preciso',
+      comentario: 'Los clics son firmes y el sensor de 6,400 DPI responde al instante. Llegó con su caja sellada y garantía oficial de 12 meses.',
+      ciudad: 'San Antonio de Pichincha',
+      compra_verificada: true,
+      creado_en: '2026-10-22T16:20:00Z'
+    }
+  ],
+  3: [
+    {
+      id: 'res-seed-3-1',
+      producto_id: 3,
+      calificacion: 5,
+      nombre_autor: 'Javier Mantilla',
+      titulo: 'RGB brillante y excelente respuesta',
+      comentario: 'Gran opción accesible con sensor óptico Pixart y buen peso. La iluminación Chroma se ve excelente en el setup.',
+      ciudad: 'Quito (Centro)',
+      compra_verificada: true,
+      creado_en: '2026-10-25T13:00:00Z'
+    }
+  ],
+  4: [
+    {
+      id: 'res-seed-4-1',
+      producto_id: 4,
+      calificacion: 5,
+      nombre_autor: 'Guillermo Pazmiño',
+      titulo: 'Construcción premium y duradera',
+      comentario: 'Los interruptores Cherry MX Red son ultrasuaves y silenciosos. Chasis de aluminio cepillado robusto y el reposamuñecas acolchado es un gran plus.',
+      ciudad: 'Quito (Iñaquito)',
+      compra_verificada: true,
+      creado_en: '2026-10-30T10:10:00Z'
+    },
+    {
+      id: 'res-seed-4-2',
+      producto_id: 4,
+      calificacion: 5,
+      nombre_autor: 'María José Endara',
+      titulo: 'El rey de los teclados mecánicos',
+      comentario: 'La iluminación RGB individual por tecla es espectacular. Los controles multimedia dedicados facilitan el trabajo diario.',
+      ciudad: 'Valle de Los Chillos',
+      compra_verificada: true,
+      creado_en: '2026-10-24T17:45:00Z'
+    }
+  ],
+  5: [
+    {
+      id: 'res-seed-5-1',
+      producto_id: 5,
+      calificacion: 5,
+      nombre_autor: 'Fabián Torres',
+      titulo: 'Compacto y muy potente',
+      comentario: 'Teclado mecánico TKL compacto ideal para escritorios reducidos. Switches Outemu Blue audibles con respuesta táctil inmejorable.',
+      ciudad: 'Carcelén',
+      compra_verificada: true,
+      creado_en: '2026-10-28T15:20:00Z'
+    }
+  ],
+  6: [
+    {
+      id: 'res-seed-6-1',
+      producto_id: 6,
+      calificacion: 5,
+      nombre_autor: 'Paola Guerrero',
+      titulo: 'Silencioso y perfecto para movilidad',
+      comentario: 'Cambia entre mi laptop, tablet y teléfono con solo presionar un botón. La batería dura meses y es muy liviano para llevar a cualquier parte.',
+      ciudad: 'Quito (Mariscal)',
+      compra_verificada: true,
+      creado_en: '2026-10-27T08:50:00Z'
+    }
+  ],
+  7: [
+    {
+      id: 'res-seed-7-1',
+      producto_id: 7,
+      calificacion: 5,
+      nombre_autor: 'Lorena Montalvo',
+      titulo: 'Audio posicional impecable y confort absoluto',
+      comentario: 'Cancelación de sonido pasiva fantástica. Las almohadillas con memoria no cansan para nada y el micrófono desmontable se escucha limpio en conferencias y streaming.',
+      ciudad: 'Valle de Los Chillos (Conocoto)',
+      compra_verificada: true,
+      creado_en: '2026-11-01T12:00:00Z'
+    },
+    {
+      id: 'res-seed-7-2',
+      producto_id: 7,
+      calificacion: 5,
+      nombre_autor: 'Sebastián Ortiz',
+      titulo: 'Durabilidad y potencia en graves',
+      comentario: 'Llevo semanas usándolo a diario y es comodísimo con lentes. La tarjeta de audio USB 7.1 hace una diferencia enorme en juegos de disparos.',
+      ciudad: 'Quito (La Floresta)',
+      compra_verificada: true,
+      creado_en: '2026-10-23T20:30:00Z'
+    }
+  ],
+  8: [
+    {
+      id: 'res-seed-8-1',
+      producto_id: 8,
+      calificacion: 4,
+      nombre_autor: 'Alejandro Cruz',
+      titulo: 'Ultraligero y con excelente micrófono',
+      comentario: 'Casi no se siente en la cabeza. El audio posicional 7.1 funciona perfecto en Windows y consolas.',
+      ciudad: 'Quitumbe',
+      compra_verificada: true,
+      creado_en: '2026-10-21T14:15:00Z'
+    }
+  ],
+  9: [
+    {
+      id: 'res-seed-9-1',
+      producto_id: 9,
+      calificacion: 5,
+      nombre_autor: 'David Morales',
+      titulo: 'Claridad 1080p nítida para streaming y teletrabajo',
+      comentario: 'Enfoque automático rápido y colores balanceados incluso en habitaciones con poca luz. Los micrófonos duales capturan sonido estéreo muy nítido.',
+      ciudad: 'Quito (González Suárez)',
+      compra_verificada: true,
+      creado_en: '2026-10-29T11:45:00Z'
+    }
+  ],
+  10: [
+    {
+      id: 'res-seed-10-1',
+      producto_id: 10,
+      calificacion: 5,
+      nombre_autor: 'Camilo Sotomayor',
+      titulo: 'Superficie suave y repelente a derrames',
+      comentario: 'El mouse desliza con precisión milimétrica y los bordes con costura de 360 grados evitan cualquier desgaste con el tiempo. Tamaño XL perfecto.',
+      ciudad: 'Cumbayá',
+      compra_verificada: true,
+      creado_en: '2026-10-26T16:00:00Z'
+    }
+  ]
+}

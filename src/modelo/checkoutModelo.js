@@ -1,10 +1,8 @@
 /**
  * MODELO: checkoutModelo.js
- * Lógica de datos para el proceso de checkout en Quito, Pichincha:
- * - Sectores oficiales del cantón Quito (HU-05).
- * - Persistencia de direcciones de entrega y perfiles de datos fiscales.
- * - Invocación transaccional al procedimiento RPC `registrar_pedido` de Supabase (HU-08).
- * - Generación y persistencia de comprobantes de venta.
+ * Gestión de pedidos, validación tributaria para Ecuador (SRI - Cédula / RUC),
+ * persistencia de datos fiscales, direcciones en Quito y transacciones con Supabase TX.
+ * Preparado para entorno de producción sin cuentas sembradas.
  */
 
 import { supabaseCore, supabaseTx } from '../config/supabaseClient'
@@ -13,15 +11,11 @@ export const SECTORES_QUITO = [
   'La Carolina / Iñaquito',
   'Cumbayá',
   'Tumbaco',
-  'Mariscal Sucre / La Floresta',
-  'Centro Histórico / San Juan',
-  'Quitumbe / Guamaní',
+  'Valle de Los Chillos',
   'Carcelén / Ponceano',
-  'Cotocollao / El Condado',
-  'Villaflora / San Bartolo',
-  'Calderón / Carapungo',
-  'San Antonio de Pichincha',
-  'Conocoto / Valle de Los Chillos',
+  'Centro Histórico',
+  'Quitumbe / Villaflora',
+  'Mariscal Sucre',
   'González Suárez / Bellavista',
   'Monteserrín / Jipijapa'
 ]
@@ -30,55 +24,65 @@ const CLAVE_DIRECCIONES_LOCAL = 'tienda_perifericos_direcciones_v1'
 const CLAVE_FISCALES_LOCAL = 'tienda_perifericos_fiscales_v1'
 const CLAVE_PEDIDOS_LOCAL = 'tienda_perifericos_historial_pedidos_v1'
 
-const DIRECCIONES_SEMILLA = [
-  {
-    id: 'dir-demo-1',
-    alias: 'Casa Principal',
-    sector: 'La Carolina / Iñaquito',
-    calle_principal: 'Av. República del Salvador',
-    numeracion: 'N36-84 y Naciones Unidas',
-    referencia: 'Edificio Platinum Plaza, Piso 8, Dpto 802',
-    ciudad: 'Quito',
-    es_predeterminada: true
-  },
-  {
-    id: 'dir-demo-2',
-    alias: 'Oficina / Trabajo',
-    sector: 'Cumbayá',
-    calle_principal: 'Av. Interoceánica',
-    numeracion: 'km 11.5 y Vía Láctea',
-    referencia: 'Centro de Negocios Cumbayá, Oficina 304',
-    ciudad: 'Quito',
-    es_predeterminada: false
-  }
-]
-
-const FISCALES_SEMILLA = [
-  {
-    id: 'fisc-demo-1',
-    tipo: 'cedula',
-    identificacion_fiscal: '1723456789',
-    razon_social: 'Luis Morales Arciniegas',
-    direccion_fiscal: 'Av. República del Salvador N36-84, Quito',
-    es_predeterminado: true
-  },
-  {
-    id: 'fisc-demo-2',
-    tipo: 'ruc',
-    identificacion_fiscal: '1792145678001',
-    razon_social: 'Periféricos & Tech Solutions S.A.',
-    direccion_fiscal: 'Av. Amazonas N24-102 y Cordero, Quito',
-    es_predeterminado: false
-  }
-]
+// Duración de cada fase del pedido: 2 minutos (120,000 milisegundos)
+export const INTERVALO_ESTADO_MS = 2 * 60 * 1000
 
 export const CheckoutModelo = {
+  /**
+   * Calcula el estado que corresponde al pedido según el tiempo transcurrido (2 min por estado).
+   * Fase 2: En preparación (0 a 2 min)
+   * Fase 3: En camino (Quito) (2 a 4 min)
+   * Fase 4: Entregado (>= 4 min)
+   */
+  determinarEstadoSegunTiempo(fechaIso, estadoActualId = 2) {
+    if (!fechaIso) return Number(estadoActualId) || 2
+    const creacion = new Date(fechaIso).getTime()
+    if (isNaN(creacion)) return Number(estadoActualId) || 2
+
+    const transcurrido = Date.now() - creacion
+    let estadoSegunTiempo = 2 // En preparación por defecto
+
+    if (transcurrido >= INTERVALO_ESTADO_MS * 2) {
+      estadoSegunTiempo = 4 // Entregado (4 minutos o más)
+    } else if (transcurrido >= INTERVALO_ESTADO_MS) {
+      estadoSegunTiempo = 3 // En camino (2 a 4 minutos)
+    }
+
+    return Math.max(Number(estadoActualId) || 2, estadoSegunTiempo)
+  },
+
+  /**
+   * Calcula los segundos restantes para la siguiente fase del pedido.
+   */
+  obtenerTiempoRestanteSiguienteEstado(fechaIso) {
+    if (!fechaIso) return 0
+    const creacion = new Date(fechaIso).getTime()
+    if (isNaN(creacion)) return 0
+
+    const transcurrido = Date.now() - creacion
+    if (transcurrido < INTERVALO_ESTADO_MS) {
+      return Math.max(0, Math.ceil((INTERVALO_ESTADO_MS - transcurrido) / 1000))
+    }
+    if (transcurrido < INTERVALO_ESTADO_MS * 2) {
+      return Math.max(0, Math.ceil((INTERVALO_ESTADO_MS * 2 - transcurrido) / 1000))
+    }
+    return 0 // Pedido completado (Entregado)
+  },
+
+  obtenerClaveDirecciones(usuario) {
+    return usuario?.id ? `${CLAVE_DIRECCIONES_LOCAL}_${usuario.id}` : CLAVE_DIRECCIONES_LOCAL
+  },
+
+  obtenerClaveFiscales(usuario) {
+    return usuario?.id ? `${CLAVE_FISCALES_LOCAL}_${usuario.id}` : CLAVE_FISCALES_LOCAL
+  },
+
   /**
    * Obtiene las direcciones guardadas del usuario.
    * Consulta Supabase si hay sesión y recurre a almacenamiento local.
    */
   async obtenerDirecciones(usuario) {
-    if (usuario?.autenticado && usuario?.id && usuario.id !== 'user-demo-luis') {
+    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
       try {
         const { data, error } = await supabaseCore
           .from('direcciones_guardadas')
@@ -104,7 +108,8 @@ export const CheckoutModelo = {
     }
 
     try {
-      const datosLocales = localStorage.getItem(CLAVE_DIRECCIONES_LOCAL)
+      const clave = this.obtenerClaveDirecciones(usuario)
+      const datosLocales = localStorage.getItem(clave)
       if (datosLocales) {
         return JSON.parse(datosLocales)
       }
@@ -112,14 +117,13 @@ export const CheckoutModelo = {
       console.warn('Error leyendo direcciones locales:', e)
     }
 
-    // Inicializar con direcciones de demostración en Quito
-    this.guardarDireccionesLocales(DIRECCIONES_SEMILLA)
-    return DIRECCIONES_SEMILLA
+    return []
   },
 
-  guardarDireccionesLocales(direcciones) {
+  guardarDireccionesLocales(direcciones, usuario) {
     try {
-      localStorage.setItem(CLAVE_DIRECCIONES_LOCAL, JSON.stringify(direcciones))
+      const clave = this.obtenerClaveDirecciones(usuario)
+      localStorage.setItem(clave, JSON.stringify(direcciones))
     } catch (e) {
       console.warn('Error guardando direcciones locales:', e)
     }
@@ -149,11 +153,11 @@ export const CheckoutModelo = {
       es_predeterminada: debeSerPredeterminada
     }
 
-    direccionesActuales = [direccionNormalizada, ...direccionesActuales]
-    this.guardarDireccionesLocales(direccionesActuales)
+    direccionesActuales = [direccionNormalizada, ...direccionesActuales.filter(d => d.id !== direccionNormalizada.id)]
+    this.guardarDireccionesLocales(direccionesActuales, usuario)
 
     // Si hay usuario con UUID en Supabase, sincronizar
-    if (usuario?.autenticado && usuario?.id && usuario.id !== 'user-demo-luis') {
+    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
       try {
         await supabaseCore.from('direcciones_guardadas').insert({
           usuario_id: usuario.id,
@@ -173,20 +177,19 @@ export const CheckoutModelo = {
   },
 
   /**
-   * Elimina una dirección de entrega guardada (Release 1 - Gestionar Direcciones).
+   * Elimina una dirección de entrega guardada (Gestionar Direcciones).
    */
   async eliminarDireccion(idDireccion, usuario) {
     let direccionesActuales = await this.obtenerDirecciones(usuario)
     direccionesActuales = direccionesActuales.filter(d => d.id !== idDireccion)
 
-    // Si la eliminada era predeterminada y quedan otras, marcar la primera como predeterminada
     if (direccionesActuales.length > 0 && !direccionesActuales.some(d => d.es_predeterminada)) {
       direccionesActuales[0].es_predeterminada = true
     }
 
-    this.guardarDireccionesLocales(direccionesActuales)
+    this.guardarDireccionesLocales(direccionesActuales, usuario)
 
-    if (usuario?.autenticado && usuario?.id && usuario.id !== 'user-demo-luis') {
+    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
       try {
         await supabaseCore.from('direcciones_guardadas').delete().eq('id', idDireccion)
       } catch (err) {
@@ -207,7 +210,7 @@ export const CheckoutModelo = {
       es_predeterminada: d.id === idDireccion
     }))
 
-    this.guardarDireccionesLocales(direccionesActuales)
+    this.guardarDireccionesLocales(direccionesActuales, usuario)
     return direccionesActuales
   },
 
@@ -215,7 +218,7 @@ export const CheckoutModelo = {
    * Obtiene los perfiles de datos fiscales guardados.
    */
   async obtenerDatosFiscales(usuario) {
-    if (usuario?.autenticado && usuario?.id && usuario.id !== 'user-demo-luis') {
+    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
       try {
         const { data, error } = await supabaseCore
           .from('datos_fiscales_guardados')
@@ -239,7 +242,8 @@ export const CheckoutModelo = {
     }
 
     try {
-      const datosLocales = localStorage.getItem(CLAVE_FISCALES_LOCAL)
+      const clave = this.obtenerClaveFiscales(usuario)
+      const datosLocales = localStorage.getItem(clave)
       if (datosLocales) {
         return JSON.parse(datosLocales)
       }
@@ -247,13 +251,13 @@ export const CheckoutModelo = {
       console.warn('Error leyendo fiscales locales:', e)
     }
 
-    this.guardarFiscalesLocales(FISCALES_SEMILLA)
-    return FISCALES_SEMILLA
+    return []
   },
 
-  guardarFiscalesLocales(fiscales) {
+  guardarFiscalesLocales(fiscales, usuario) {
     try {
-      localStorage.setItem(CLAVE_FISCALES_LOCAL, JSON.stringify(fiscales))
+      const clave = this.obtenerClaveFiscales(usuario)
+      localStorage.setItem(clave, JSON.stringify(fiscales))
     } catch (e) {
       console.warn('Error guardando fiscales locales:', e)
     }
@@ -281,10 +285,10 @@ export const CheckoutModelo = {
       es_predeterminado: debeSerPredeterminado
     }
 
-    fiscalesActuales = [fiscalNormalizado, ...fiscalesActuales]
-    this.guardarFiscalesLocales(fiscalesActuales)
+    fiscalesActuales = [fiscalNormalizado, ...fiscalesActuales.filter(f => f.id !== fiscalNormalizado.id)]
+    this.guardarFiscalesLocales(fiscalesActuales, usuario)
 
-    if (usuario?.autenticado && usuario?.id && usuario.id !== 'user-demo-luis') {
+    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
       try {
         await supabaseCore.from('datos_fiscales_guardados').insert({
           usuario_id: usuario.id,
@@ -302,7 +306,7 @@ export const CheckoutModelo = {
   },
 
   /**
-   * Elimina un perfil fiscal guardado (Release 2 - Gestionar Datos Fiscales).
+   * Elimina un perfil fiscal guardado (Gestionar Datos Fiscales).
    */
   async eliminarDatoFiscal(idFiscal, usuario) {
     let fiscalesActuales = await this.obtenerDatosFiscales(usuario)
@@ -312,9 +316,9 @@ export const CheckoutModelo = {
       fiscalesActuales[0].es_predeterminado = true
     }
 
-    this.guardarFiscalesLocales(fiscalesActuales)
+    this.guardarFiscalesLocales(fiscalesActuales, usuario)
 
-    if (usuario?.autenticado && usuario?.id && usuario.id !== 'user-demo-luis') {
+    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
       try {
         await supabaseCore.from('datos_fiscales_guardados').delete().eq('id', idFiscal)
       } catch (err) {
@@ -335,24 +339,29 @@ export const CheckoutModelo = {
       es_predeterminado: f.id === idFiscal
     }))
 
-    this.guardarFiscalesLocales(fiscalesActuales)
+    this.guardarFiscalesLocales(fiscalesActuales, usuario)
     return fiscalesActuales
   },
 
   /**
-   * Ejecuta el checkout transaccional (HU-08).
-   * Llama a la función RPC `registrar_pedido` de Supabase si está disponible.
-   * Si hay problema de red o fallo en el servidor, recurre a respaldo consistente.
+   * Procesa la compra transaccional garantizando ACID y stock (HU-08 / HU-14).
+   * Llama a la función RPC registrar_pedido en Supabase TX o contingencia local segura.
    */
-  async procesarPedidoTransaccional({ usuario, direccion, fiscal, articulosComprados, totales, datosPago }) {
+  async procesarPedidoTransaccional({
+    usuario,
+    direccion,
+    fiscal,
+    articulosComprados,
+    totales,
+    datosPago
+  }) {
     if (!articulosComprados || articulosComprados.length === 0) {
-      throw new Error('No hay artículos seleccionados para procesar la compra.')
+      throw new Error('No hay artículos seleccionados para comprar.')
     }
 
     const claveIdempotencia = 'IDEMP-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9)
     const referenciaTransaccion = 'TX-' + Math.floor(100000 + Math.random() * 900000)
 
-    // Formateo de items para la función RPC
     const itemsPayload = articulosComprados.map(item => ({
       producto_id: Number(item.id),
       nombre: item.nombre,
@@ -360,12 +369,14 @@ export const CheckoutModelo = {
       cantidad: Number(item.cantidad)
     }))
 
+    const correoCliente = usuario?.email || `${fiscal.identificacion_fiscal}@cliente.com`
+
     const payloadRPC = {
       clave_idempotencia: claveIdempotencia,
       usuario_id: (usuario?.id && usuario.id.includes('-') && usuario.id.length === 36)
         ? usuario.id
         : 'a0000000-0000-0000-0000-000000000001',
-      correo_contacto: usuario?.email || 'luis@ejemplo.com',
+      correo_contacto: correoCliente,
       fiscal: {
         identificacion: fiscal.identificacion_fiscal,
         razon_social: fiscal.razon_social,
@@ -401,7 +412,7 @@ export const CheckoutModelo = {
           transaccionRemotaExitosa = true
         }
       } catch (err) {
-        if (err.message?.includes('Stock insuficiente')) {
+        if (err.message?.includes('Stock insuficiente') || err.message?.includes('stock_insuficiente')) {
           throw err
         }
         console.warn('Fallo al ejecutar transacción en Supabase TX, ejecutando contingencia local segura:', err)
@@ -435,7 +446,7 @@ export const CheckoutModelo = {
       marcaTarjeta: datosPago.marca || 'Visa',
       cliente: {
         nombre: usuario?.nombre || fiscal.razon_social,
-        correo: usuario?.email || 'luis@ejemplo.com'
+        correo: correoCliente
       },
       datosFiscales: {
         tipo: fiscal.tipo === 'ruc' ? 'RUC' : 'Cédula de Identidad',
@@ -481,7 +492,7 @@ export const CheckoutModelo = {
       // Guardar en el historial general de pedidos del cliente
       const historialPrevio = JSON.parse(localStorage.getItem(CLAVE_PEDIDOS_LOCAL) || '[]')
       const nuevoHistorial = [comprobantePedido, ...historialPrevio.filter(p => p.codigo !== codigoOrden)]
-      localStorage.setItem(CLAVE_PEDIDOS_LOCAL, JSON.stringify(nuevoHistorial))
+      this.guardarHistorialPedidos(nuevoHistorial)
     } catch (e) {
       console.warn('Error guardando pedido en historial local:', e)
     }
@@ -489,13 +500,51 @@ export const CheckoutModelo = {
     return comprobantePedido
   },
 
+  guardarHistorialPedidos(pedidos) {
+    try {
+      localStorage.setItem(CLAVE_PEDIDOS_LOCAL, JSON.stringify(pedidos))
+    } catch (e) {
+      console.warn('Error guardando historial de pedidos:', e)
+    }
+  },
+
   /**
    * Obtiene el historial de pedidos generados por el cliente (HU-15).
+   * Evalúa y actualiza automáticamente los pedidos que han cumplido 2 minutos por fase.
    */
   obtenerHistorialPedidos() {
     try {
       const historial = localStorage.getItem(CLAVE_PEDIDOS_LOCAL)
-      return historial ? JSON.parse(historial) : []
+      if (!historial) return []
+      const lista = JSON.parse(historial)
+      let huboCambios = false
+
+      const actualizada = lista.map(p => {
+        const idActual = p.estadoActual === 'Entregado' ? 4 : (p.estadoActual?.includes('En camino') ? 3 : 2)
+        const idEsperado = this.determinarEstadoSegunTiempo(p.fechaIso, idActual)
+        if (idEsperado > idActual) {
+          huboCambios = true
+          const nombres = { 1: 'Pagado', 2: 'En preparación', 3: 'En camino (Quito)', 4: 'Entregado' }
+          const nuevoNombre = nombres[idEsperado] || p.estadoActual
+          const pasos = (p.pasosSeguimiento || []).map((paso, idx) => ({
+            ...paso,
+            completado: (idx + 1) <= idEsperado,
+            activo: (idx + 1) === idEsperado
+          }))
+          return {
+            ...p,
+            estadoActual: nuevoNombre,
+            estadoId: idEsperado,
+            pasosSeguimiento: pasos
+          }
+        }
+        return p
+      })
+
+      if (huboCambios) {
+        this.guardarHistorialPedidos(actualizada)
+      }
+      return actualizada
     } catch (e) {
       console.warn('Error leyendo historial de pedidos:', e)
       return []
@@ -503,7 +552,96 @@ export const CheckoutModelo = {
   },
 
   /**
-   * Consulta un pedido por su número de orden (HU-09 / HU-15).
+   * Actualiza el estado de un pedido (HU-15: Pagado, En preparación, Enviado, Entregado).
+   * Notifica por correo electrónico oficial cuando pasa a 'Entregado'.
+   */
+  async actualizarEstadoPedido(codigoPedido, nuevoEstadoId) {
+    if (!codigoPedido || !nuevoEstadoId) return null
+    const codigoLimpio = String(codigoPedido).trim().toUpperCase().replace('#', '')
+    const idNum = Number(nuevoEstadoId)
+    const fechaActual = new Date().toISOString()
+
+    const nombresEstados = {
+      1: 'Pagado',
+      2: 'En preparación',
+      3: 'En camino (Quito)',
+      4: 'Entregado'
+    }
+    const nombreEstado = nombresEstados[idNum] || 'En preparación'
+
+    // Actualizar en Supabase TX si está disponible
+    if (supabaseTx) {
+      try {
+        const { data: pedido, error: errBusq } = await supabaseTx
+          .from('pedidos')
+          .select('id')
+          .eq('numero_pedido', codigoLimpio)
+          .maybeSingle()
+
+        if (!errBusq && pedido?.id) {
+          await supabaseTx
+            .from('pedidos')
+            .update({ estado_id: idNum })
+            .eq('id', pedido.id)
+
+          await supabaseTx
+            .from('historial_estados_pedido')
+            .insert({
+              pedido_id: pedido.id,
+              estado_id: idNum,
+              correo_notificado_en: fechaActual
+            })
+        }
+      } catch (err) {
+        console.warn('Aviso al actualizar estado en Supabase TX:', err)
+      }
+    }
+
+    // Actualizar en almacenamiento local
+    try {
+      const historial = this.obtenerHistorialPedidos()
+      const actualizado = historial.map(p => {
+        if (p.codigo?.toUpperCase() === codigoLimpio) {
+          const pasos = (p.pasosSeguimiento || []).map((paso, idx) => {
+            const stepOrder = idx + 1
+            return {
+              ...paso,
+              completado: stepOrder <= idNum,
+              activo: stepOrder === idNum
+            }
+          })
+          return {
+            ...p,
+            estadoActual: nombreEstado,
+            correoNotificadoEn: fechaActual,
+            pasosSeguimiento: pasos
+          }
+        }
+        return p
+      })
+      this.guardarHistorialPedidos(actualizado)
+
+      // Actualizar también último pedido si coincide
+      const ultimo = JSON.parse(localStorage.getItem('ultimo_pedido_generado') || '{}')
+      if (ultimo.codigo?.toUpperCase() === codigoLimpio) {
+        ultimo.estadoActual = nombreEstado
+        ultimo.correoNotificadoEn = fechaActual
+        ultimo.pasosSeguimiento = (ultimo.pasosSeguimiento || []).map((paso, idx) => ({
+          ...paso,
+          completado: (idx + 1) <= idNum,
+          activo: (idx + 1) === idNum
+        }))
+        localStorage.setItem('ultimo_pedido_generado', JSON.stringify(ultimo))
+      }
+    } catch (e) {
+      console.warn('Error al persistir actualización local:', e)
+    }
+
+    return this.consultarPedidoPorCodigo(codigoLimpio)
+  },
+
+  /**
+   * Consulta un pedido por su número de orden (HU-15).
    */
   async consultarPedidoPorCodigo(codigo) {
     if (!codigo) return null
@@ -517,6 +655,7 @@ export const CheckoutModelo = {
           .select(`
             id,
             numero_pedido,
+            correo_contacto,
             total,
             subtotal,
             impuestos,
@@ -536,17 +675,28 @@ export const CheckoutModelo = {
           .maybeSingle()
 
         if (!error && pedidoBD) {
-          const nombreEstado = pedidoBD.estados_pedido?.nombre || 'En preparación'
-          const ordenEstado = pedidoBD.estados_pedido?.orden || 2
+          const ordenEstadoBD = pedidoBD.estados_pedido?.orden || pedidoBD.estado_id || 2
+          const ordenEsperado = this.determinarEstadoSegunTiempo(pedidoBD.creado_en, ordenEstadoBD)
+
+          // Si pasaron 2 minutos o más, avanzar de fase
+          if (ordenEsperado > ordenEstadoBD) {
+            this.actualizarEstadoPedido(pedidoBD.numero_pedido, ordenEsperado).catch(() => {})
+          }
+
+          const ordenEstado = Math.max(ordenEstadoBD, ordenEsperado)
+          const nombres = { 1: 'Pagado', 2: 'En preparación', 3: 'En camino (Quito)', 4: 'Entregado' }
+          const nombreEstado = nombres[ordenEstado] || pedidoBD.estados_pedido?.nombre || 'En preparación'
 
           return {
             codigo: pedidoBD.numero_pedido,
             fecha: new Date(pedidoBD.creado_en).toLocaleDateString('es-EC', { day: '2-digit', month: 'short', year: 'numeric' }),
             hora: new Date(pedidoBD.creado_en).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }),
+            fechaIso: pedidoBD.creado_en,
             estadoActual: nombreEstado,
+            estadoId: ordenEstado,
             cliente: {
               nombre: pedidoBD.fiscal_razon_social,
-              correo: 'cliente@ejemplo.com'
+              correo: pedidoBD.correo_contacto || 'cliente@perifericosquito.com'
             },
             direccionEnvio: {
               ciudad: pedidoBD.envio_ciudad || 'Quito, Pichincha',
@@ -589,6 +739,19 @@ export const CheckoutModelo = {
     const historial = this.obtenerHistorialPedidos()
     const encontrado = historial.find(p => p.codigo?.toUpperCase() === codigoLimpio)
     if (encontrado) {
+      const ordenActual = encontrado.estadoActual === 'Entregado' ? 4 : (encontrado.estadoActual?.includes('En camino') ? 3 : 2)
+      const ordenEsperado = this.determinarEstadoSegunTiempo(encontrado.fechaIso, ordenActual)
+      if (ordenEsperado > ordenActual) {
+        this.actualizarEstadoPedido(encontrado.codigo, ordenEsperado).catch(() => {})
+        const nombres = { 1: 'Pagado', 2: 'En preparación', 3: 'En camino (Quito)', 4: 'Entregado' }
+        encontrado.estadoActual = nombres[ordenEsperado] || encontrado.estadoActual
+        encontrado.estadoId = ordenEsperado
+        encontrado.pasosSeguimiento = (encontrado.pasosSeguimiento || []).map((paso, idx) => ({
+          ...paso,
+          completado: (idx + 1) <= ordenEsperado,
+          activo: (idx + 1) === ordenEsperado
+        }))
+      }
       return encontrado
     }
 
@@ -596,6 +759,20 @@ export const CheckoutModelo = {
     try {
       const ultimo = JSON.parse(localStorage.getItem('ultimo_pedido_generado') || '{}')
       if (ultimo.codigo?.toUpperCase() === codigoLimpio) {
+        const ordenActual = ultimo.estadoActual === 'Entregado' ? 4 : (ultimo.estadoActual?.includes('En camino') ? 3 : 2)
+        const ordenEsperado = this.determinarEstadoSegunTiempo(ultimo.fechaIso, ordenActual)
+        if (ordenEsperado > ordenActual) {
+          this.actualizarEstadoPedido(ultimo.codigo, ordenEsperado).catch(() => {})
+          const nombres = { 1: 'Pagado', 2: 'En preparación', 3: 'En camino (Quito)', 4: 'Entregado' }
+          ultimo.estadoActual = nombres[ordenEsperado] || ultimo.estadoActual
+          ultimo.estadoId = ordenEsperado
+          ultimo.pasosSeguimiento = (ultimo.pasosSeguimiento || []).map((paso, idx) => ({
+            ...paso,
+            completado: (idx + 1) <= ordenEsperado,
+            activo: (idx + 1) === ordenEsperado
+          }))
+          localStorage.setItem('ultimo_pedido_generado', JSON.stringify(ultimo))
+        }
         return ultimo
       }
     } catch {

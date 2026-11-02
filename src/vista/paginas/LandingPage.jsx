@@ -7,6 +7,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useCatalogo } from '../../controlador/useCatalogo'
+import { useAutenticacion } from '../../controlador/useAuth'
 import { HeroBanner } from '../componentes/HeroBanner'
 import { TarjetasDestacadas } from '../componentes/AmazonFeatureCards'
 import { TarjetaProducto } from '../componentes/ProductCard'
@@ -15,6 +16,7 @@ import { IconoPeriferico } from '../componentes/PeripheralIcon'
 
 export function PaginaInicio() {
   const { productos, cargando, error } = useCatalogo({ limite: 6 })
+  const { usuario } = useAutenticacion()
   const [faqAbierto, setFaqAbierto] = useState(null)
 
   const alternarPregunta = (indice) => {
@@ -114,7 +116,52 @@ export function PaginaInicio() {
           </div>
         </section>
 
-        {/* 5. Franja de Garantías y Cobertura */}
+        {/* 5. Módulo de Registro / Inicio de Sesión (Release 3) */}
+        <section className="auth-callout-section" aria-labelledby="auth-callout-heading">
+          {!usuario?.autenticado ? (
+            <div className="auth-callout-card">
+              <div className="auth-callout-text">
+                <span className="auth-badge-pill">COMPRADORES EN PICHINCHA</span>
+                <h2 id="auth-callout-heading" className="auth-callout-title">
+                  Crea tu cuenta o inicia sesión para una experiencia completa
+                </h2>
+                <p className="auth-callout-desc">
+                  Guarda tus direcciones de entrega en Quito, emite tus facturas con Cédula o RUC, valora tus periféricos comprados y consulta el seguimiento en tiempo real.
+                </p>
+              </div>
+              <div className="auth-callout-actions">
+                <Link to="/login" className="btn-primary auth-btn-cta">
+                  Iniciar sesión
+                </Link>
+                <Link to="/login?mode=register" className="btn-secondary auth-btn-register">
+                  Crear cuenta gratis
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="auth-callout-card user-logged-card">
+              <div className="auth-callout-text">
+                <span className="auth-badge-pill">SESIÓN ACTIVA</span>
+                <h2 id="auth-callout-heading" className="auth-callout-title">
+                  ¡Bienvenido de nuevo, {usuario.nombre}!
+                </h2>
+                <p className="auth-callout-desc">
+                  Tu cuenta se encuentra activa para realizar compras directas con entrega en Pichincha. Consulta tus pedidos o administra tus direcciones guardadas.
+                </p>
+              </div>
+              <div className="auth-callout-actions">
+                <Link to="/cuenta" className="btn-primary auth-btn-cta">
+                  Ir a mi cuenta
+                </Link>
+                <Link to="/seguimiento" className="btn-secondary auth-btn-register">
+                  Rastrear mis pedidos
+                </Link>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* 6. Franja de Garantías y Cobertura */}
         <BeneficiosCompra />
 
         {/* 6. Preguntas Frecuentes */}

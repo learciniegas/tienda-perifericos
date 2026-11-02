@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { CheckoutModelo } from '../../modelo/checkoutModelo'
 import { IconoPeriferico } from '../componentes/PeripheralIcon'
 
@@ -33,6 +33,60 @@ export function PaginaSeguimiento() {
   })
   const [cargando, setCargando] = useState(() => Boolean(codigoUrl))
   const [error, setError] = useState('')
+  const [actualizandoEstado, setActualizandoEstado] = useState(false)
+  const [notificacionEntrega, setNotificacionEntrega] = useState('')
+  const [segundosRestantes, setSegundosRestantes] = useState(0)
+
+  // Temporizador para cambio automático de estado cada 2 minutos (HU-15)
+  useEffect(() => {
+    if (!pedidoConsultado || pedidoConsultado.estadoActual === 'Entregado') {
+      return
+    }
+
+    const intervalo = setInterval(async () => {
+      const restantes = CheckoutModelo.obtenerTiempoRestanteSiguienteEstado(pedidoConsultado.fechaIso)
+      setSegundosRestantes(restantes)
+
+      // Si los segundos restantes llegan a 0 o se cumple el ciclo, consultar estado actualizado
+      if (restantes <= 0) {
+        const actualizado = await CheckoutModelo.consultarPedidoPorCodigo(pedidoConsultado.codigo)
+        if (actualizado && actualizado.estadoActual !== pedidoConsultado.estadoActual) {
+          setPedidoConsultado(actualizado)
+          if (actualizado.estadoActual === 'Entregado') {
+            setNotificacionEntrega(
+              `✓ ¡Aviso enviado! Se despachó el correo oficial de entrega completada a ${actualizado.cliente?.correo || 'tu correo registrado'}.`
+            )
+          }
+        }
+      }
+    }, 1000)
+
+    return () => clearInterval(intervalo)
+  }, [pedidoConsultado])
+
+  const segundosEfectivos = segundosRestantes > 0
+    ? segundosRestantes
+    : (pedidoConsultado ? CheckoutModelo.obtenerTiempoRestanteSiguienteEstado(pedidoConsultado.fechaIso) : 0)
+
+  const manejarCambioEstado = async (nuevoEstadoId) => {
+    if (!pedidoConsultado) return
+    setActualizandoEstado(true)
+    setNotificacionEntrega('')
+
+    try {
+      const actualizado = await CheckoutModelo.actualizarEstadoPedido(pedidoConsultado.codigo, nuevoEstadoId)
+      if (actualizado) {
+        setPedidoConsultado(actualizado)
+        if (Number(nuevoEstadoId) === 4) {
+          setNotificacionEntrega(`✓ ¡Aviso enviado! Se despachó el correo oficial de entrega completada a ${actualizado.cliente?.correo || 'tu correo registrado'}.`)
+        }
+      }
+    } catch (err) {
+      console.warn('Error al actualizar estado del pedido:', err)
+    } finally {
+      setActualizandoEstado(false)
+    }
+  }
 
   // Si viene con parámetro ?orden=... en la URL, consultar asíncronamente
   useEffect(() => {
@@ -139,8 +193,25 @@ export function PaginaSeguimiento() {
                 <p>
                   Fecha: {pedidoConsultado.fecha} {pedidoConsultado.hora ? `• ${pedidoConsultado.hora}` : ''} • Destino: {pedidoConsultado.direccionEnvio?.sector || pedidoConsultado.canton || 'Quito, Pichincha'}
                 </p>
+                {pedidoConsultado.estadoActual !== 'Entregado' && segundosEfectivos > 0 ? (
+                  <div className="tracking-timer-pill" role="status" aria-live="polite">
+                    <span className="timer-pulse-dot" aria-hidden="true" />
+                    <span>
+                      Próxima fase en:{' '}
+                      <strong>
+                        {Math.floor(segundosEfectivos / 60)}:
+                        {String(segundosEfectivos % 60).padStart(2, '0')}
+                      </strong>{' '}
+                      min (Cambio cada 2 minutos)
+                    </span>
+                  </div>
+                ) : pedidoConsultado.estadoActual === 'Entregado' ? (
+                  <div className="tracking-timer-pill delivered-pill" role="status">
+                    <span>✓ Pedido entregado en destino • Correo enviado</span>
+                  </div>
+                ) : null}
               </div>
-              <span className="status-pill status-in-progress">
+              <span className={`status-pill ${pedidoConsultado.estadoActual === 'Entregado' ? 'status-delivered' : 'status-in-progress'}`}>
                 {pedidoConsultado.estadoActual}
               </span>
             </div>
@@ -163,14 +234,25 @@ export function PaginaSeguimiento() {
               ))}
             </ol>
 
-            {/* Artículos de la orden */}
+            {/* Artículos de la orden con opción de valoración (Release 3) */}
             <div className="order-items-preview">
               <h3>Artículos en despacho</h3>
-              <ul>
+              <ul className="order-tracking-items-list">
                 {(pedidoConsultado.articulos || []).map((articulo, indice) => (
-                  <li key={indice}>
-                    <span>{articulo.cantidad}x {articulo.nombre}</span>
-                    <strong>${(articulo.precio * articulo.cantidad).toFixed(2)}</strong>
+                  <li key={indice} className="order-tracking-item-row">
+                    <div className="tracking-item-info">
+                      <span className="tracking-item-title">{articulo.cantidad}x {articulo.nombre}</span>
+                      <strong>${(articulo.precio * articulo.cantidad).toFixed(2)}</strong>
+                    </div>
+                    {articulo.id && (
+                      <Link
+                        to={`/producto/${articulo.id}#resenas`}
+                        className="btn-secondary btn-rate-tracking"
+                        aria-label={`Calificar y opinar sobre ${articulo.nombre}`}
+                      >
+                        ★ Opinar sobre este periférico
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -182,7 +264,57 @@ export function PaginaSeguimiento() {
               )}
             </div>
 
-            {/* Notificación oficial por correo de estados (Release 2) */}
+            {/* Control logístico de despacho y entrega */}
+            <div className="status-update-control-card" role="region" aria-label="Fase de despacho y entrega">
+              <div className="status-control-header">
+                <span className="status-control-tag">LOGÍSTICA EN PICHINCHA</span>
+                <h3 className="status-control-title">Avanzar fase de despacho</h3>
+                <p className="status-control-desc">
+                  Actualiza el estado de entrega del paquete. Al llegar al estado <strong>Entregado</strong>, el sistema despacha automáticamente el correo de confirmación final.
+                </p>
+              </div>
+
+              <div className="status-control-buttons">
+                <button
+                  type="button"
+                  className={`btn-step-status ${pedidoConsultado.estadoActual === 'En preparación' ? 'status-btn-active' : ''}`}
+                  disabled={actualizandoEstado || pedidoConsultado.estadoActual === 'En preparación'}
+                  onClick={() => manejarCambioEstado(2)}
+                  aria-label="Fijar estado en preparación"
+                >
+                  1. En preparación
+                </button>
+
+                <button
+                  type="button"
+                  className={`btn-step-status ${pedidoConsultado.estadoActual.includes('En camino') ? 'status-btn-active' : ''}`}
+                  disabled={actualizandoEstado || pedidoConsultado.estadoActual.includes('En camino')}
+                  onClick={() => manejarCambioEstado(3)}
+                  aria-label="Fijar estado en camino en Quito"
+                >
+                  2. En camino (Quito)
+                </button>
+
+                <button
+                  type="button"
+                  className={`btn-step-status btn-status-delivered ${pedidoConsultado.estadoActual === 'Entregado' ? 'status-btn-active-delivered' : ''}`}
+                  disabled={actualizandoEstado || pedidoConsultado.estadoActual === 'Entregado'}
+                  onClick={() => manejarCambioEstado(4)}
+                  aria-label="Marcar como Entregado y despachar notificación de entrega"
+                >
+                  3. Marcar como Entregado
+                </button>
+              </div>
+
+              {notificacionEntrega && (
+                <div className="auth-alert auth-alert-success mt-3" role="status" aria-live="polite">
+                  <span className="alert-icon" aria-hidden="true">✓</span>
+                  <p>{notificacionEntrega}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Notificación oficial por correo de estados (Release 2 y 3) */}
             <div className="order-email-notification-card">
               <div className="email-notif-header">
                 <span className="email-icon" aria-hidden="true">📧</span>

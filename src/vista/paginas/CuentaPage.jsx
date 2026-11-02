@@ -12,6 +12,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAutenticacion } from '../../controlador/useAuth'
 import { CheckoutModelo, SECTORES_QUITO } from '../../modelo/checkoutModelo'
 import { validarIdentificacion } from '../../modelo/validadorModelo'
+import { guardarResenaProducto } from '../../modelo/catalogoModelo'
 import { IconoPeriferico } from '../componentes/PeripheralIcon'
 
 export function PaginaCuenta() {
@@ -65,6 +66,14 @@ export function PaginaCuenta() {
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [busquedaPedido, setBusquedaPedido] = useState('')
 
+  // 5. Estado de Valoración y Reseña de Producto (Release 3)
+  const [productoParaCalificar, setProductoParaCalificar] = useState(null)
+  const [calificacionEstrellas, setCalificacionEstrellas] = useState(5)
+  const [tituloResena, setTituloResena] = useState('')
+  const [comentarioResena, setComentarioResena] = useState('')
+  const [guardandoResena, setGuardandoResena] = useState(false)
+  const [mensajeResenaExito, setMensajeResenaExito] = useState('')
+
   useEffect(() => {
     let activo = true
 
@@ -85,6 +94,18 @@ export function PaginaCuenta() {
       activo = false
     }
   }, [usuario])
+
+  // Sincronizar periódicamente el estado de los pedidos cada 5s para reflejar el avance de 2 min (HU-15)
+  useEffect(() => {
+    if (pestanaActiva !== 'pedidos' || !usuario?.autenticado) return
+
+    const intervalo = setInterval(() => {
+      const actualizados = CheckoutModelo.obtenerHistorialPedidos()
+      setHistorialPedidos(actualizados)
+    }, 5000)
+
+    return () => clearInterval(intervalo)
+  }, [pestanaActiva, usuario?.autenticado])
 
   // Redirigir a login si es invitado
   if (!usuario?.autenticado) {
@@ -208,6 +229,38 @@ export function PaginaCuenta() {
       setMensajePerfil(`✓ Enlace de restablecimiento de contraseña enviado a ${usuario.email}.`)
     } catch {
       setMensajePerfil('No se pudo enviar el correo de recuperación.')
+    }
+  }
+
+  // --- Manejador de Valoración de Producto (Release 3) ---
+  const manejarGuardarResenaCuenta = async (e) => {
+    e.preventDefault()
+    if (!productoParaCalificar) return
+
+    setGuardandoResena(true)
+    try {
+      await guardarResenaProducto({
+        productoId: productoParaCalificar.id || productoParaCalificar.producto_id,
+        calificacion: calificacionEstrellas,
+        titulo: tituloResena.trim() || 'Opinión de compra verificada',
+        comentario: comentarioResena.trim() || 'Excelente periférico y entrega rápida en Quito.',
+        nombreAutor: usuario?.nombre || 'Comprador Verificado',
+        ciudad: 'Quito, Pichincha',
+        usuarioId: usuario?.id
+      })
+
+      setMensajeResenaExito(`✓ ¡Muchas gracias! Tu valoración para ${productoParaCalificar.nombre} ha sido guardada.`)
+      setTimeout(() => {
+        setMensajeResenaExito('')
+        setProductoParaCalificar(null)
+        setTituloResena('')
+        setComentarioResena('')
+        setCalificacionEstrellas(5)
+      }, 2500)
+    } catch (err) {
+      console.warn('Error al guardar reseña:', err)
+    } finally {
+      setGuardandoResena(false)
     }
   }
 
@@ -386,10 +439,21 @@ export function PaginaCuenta() {
                   <div className="order-history-body">
                     <div className="order-items-compact-list">
                       <strong>Artículos:</strong>
-                      <ul>
+                      <ul className="order-items-detailed-list">
                         {(pedido.articulos || []).map((art, idx) => (
-                          <li key={idx}>
-                            {art.cantidad}x {art.nombre} (${Number(art.precio).toFixed(2)})
+                          <li key={idx} className="order-item-detailed-row">
+                            <div className="item-text-info">
+                              <span className="item-qty-name">{art.cantidad}x {art.nombre}</span>
+                              <span className="item-price-tag">(${Number(art.precio).toFixed(2)})</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn-secondary btn-rate-inline"
+                              onClick={() => setProductoParaCalificar(art)}
+                              aria-label={`Calificar y valorar ${art.nombre}`}
+                            >
+                              ★ Valorar periférico
+                            </button>
                           </li>
                         ))}
                       </ul>
@@ -537,40 +601,54 @@ export function PaginaCuenta() {
             </form>
           )}
 
-          <div className="cards-grid-2">
-            {direcciones.map((dir) => (
-              <div key={dir.id} className="address-display-card">
-                <div className="card-top-row">
-                  <strong className="alias-badge">{dir.alias}</strong>
-                  {dir.es_predeterminada ? (
-                    <span className="default-pill-badge">Predeterminada</span>
-                  ) : (
+          {direcciones.length === 0 && !modoNuevaDireccion ? (
+            <div className="empty-panel-box">
+              <IconoPeriferico tipo="map-pin" size={48} />
+              <p>Aún no tienes direcciones registradas en Quito.</p>
+              <button
+                type="button"
+                className="btn-primary mt-2"
+                onClick={() => setModoNuevaDireccion(true)}
+              >
+                + Agregar mi primera dirección de entrega
+              </button>
+            </div>
+          ) : (
+            <div className="cards-grid-2">
+              {direcciones.map((dir) => (
+                <div key={dir.id} className="address-display-card">
+                  <div className="card-top-row">
+                    <strong className="alias-badge">{dir.alias}</strong>
+                    {dir.es_predeterminada ? (
+                      <span className="default-pill-badge">Predeterminada</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => fijarDireccionPredeterminada(dir.id)}
+                        className="btn-set-default"
+                      >
+                        Hacer predeterminada
+                      </button>
+                    )}
+                  </div>
+                  <p className="address-text-main">{dir.calle_principal} {dir.numeracion}</p>
+                  <p className="address-text-sub">📍 Sector: {dir.sector}, Quito, Pichincha</p>
+                  {dir.referencia && <p className="address-ref">Ref: {dir.referencia}</p>}
+
+                  <div className="card-actions-bottom">
                     <button
                       type="button"
-                      onClick={() => fijarDireccionPredeterminada(dir.id)}
-                      className="btn-set-default"
+                      onClick={() => borrarDireccion(dir.id)}
+                      className="btn-delete-card"
+                      aria-label={`Eliminar dirección ${dir.alias}`}
                     >
-                      Hacer predeterminada
+                      Eliminar
                     </button>
-                  )}
+                  </div>
                 </div>
-                <p className="address-text-main">{dir.calle_principal} {dir.numeracion}</p>
-                <p className="address-text-sub">📍 Sector: {dir.sector}, Quito, Pichincha</p>
-                {dir.referencia && <p className="address-ref">Ref: {dir.referencia}</p>}
-
-                <div className="card-actions-bottom">
-                  <button
-                    type="button"
-                    onClick={() => borrarDireccion(dir.id)}
-                    className="btn-delete-card"
-                    aria-label={`Eliminar dirección ${dir.alias}`}
-                  >
-                    Eliminar
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -683,43 +761,57 @@ export function PaginaCuenta() {
             </form>
           )}
 
-          <div className="cards-grid-2">
-            {datosFiscales.map((fisc) => (
-              <div key={fisc.id} className="address-display-card">
-                <div className="card-top-row">
-                  <strong className="alias-badge">{fisc.razon_social}</strong>
-                  {fisc.es_predeterminado ? (
-                    <span className="default-pill-badge">Predeterminado</span>
-                  ) : (
+          {datosFiscales.length === 0 && !modoNuevoFiscal ? (
+            <div className="empty-panel-box">
+              <IconoPeriferico tipo="file-text" size={48} />
+              <p>Aún no tienes perfiles de datos fiscales registrados para facturación.</p>
+              <button
+                type="button"
+                className="btn-primary mt-2"
+                onClick={() => setModoNuevoFiscal(true)}
+              >
+                + Registrar mis primeros datos fiscales
+              </button>
+            </div>
+          ) : (
+            <div className="cards-grid-2">
+              {datosFiscales.map((fisc) => (
+                <div key={fisc.id} className="address-display-card">
+                  <div className="card-top-row">
+                    <strong className="alias-badge">{fisc.razon_social}</strong>
+                    {fisc.es_predeterminado ? (
+                      <span className="default-pill-badge">Predeterminado</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => fijarFiscalPredeterminado(fisc.id)}
+                        className="btn-set-default"
+                      >
+                        Hacer predeterminado
+                      </button>
+                    )}
+                  </div>
+                  <p className="address-text-main">
+                    <strong>{fisc.tipo === 'ruc' ? 'RUC' : 'Cédula'}:</strong> {fisc.identificacion_fiscal}
+                  </p>
+                  {fisc.direccion_fiscal && (
+                    <p className="address-text-sub">Dirección: {fisc.direccion_fiscal}</p>
+                  )}
+
+                  <div className="card-actions-bottom">
                     <button
                       type="button"
-                      onClick={() => fijarFiscalPredeterminado(fisc.id)}
-                      className="btn-set-default"
+                      onClick={() => borrarFiscal(fisc.id)}
+                      className="btn-delete-card"
+                      aria-label={`Eliminar perfil fiscal ${fisc.razon_social}`}
                     >
-                      Hacer predeterminado
+                      Eliminar
                     </button>
-                  )}
+                  </div>
                 </div>
-                <p className="address-text-main">
-                  <strong>{fisc.tipo === 'ruc' ? 'RUC' : 'Cédula'}:</strong> {fisc.identificacion_fiscal}
-                </p>
-                {fisc.direccion_fiscal && (
-                  <p className="address-text-sub">Dirección: {fisc.direccion_fiscal}</p>
-                )}
-
-                <div className="card-actions-bottom">
-                  <button
-                    type="button"
-                    onClick={() => borrarFiscal(fisc.id)}
-                    className="btn-delete-card"
-                    aria-label={`Eliminar perfil fiscal ${fisc.razon_social}`}
-                  >
-                    Eliminar
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -796,6 +888,113 @@ export function PaginaCuenta() {
             </button>
           </div>
         </section>
+      )}
+
+      {/* Modal Accesible de Valoración de Producto (Release 3) */}
+      {productoParaCalificar && (
+        <div className="modal-backdrop-overlay" role="presentation">
+          <div
+            className="modal-dialog-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dialog-rate-title"
+          >
+            <div className="modal-dialog-header">
+              <h2 id="dialog-rate-title" className="modal-title">
+                Valorar periférico: {productoParaCalificar.nombre}
+              </h2>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setProductoParaCalificar(null)}
+                aria-label="Cerrar ventana de valoración"
+              >
+                ✕
+              </button>
+            </div>
+
+            {mensajeResenaExito ? (
+              <div className="auth-alert auth-alert-success mt-4" role="status" aria-live="polite">
+                <span className="alert-icon" aria-hidden="true">✓</span>
+                <p>{mensajeResenaExito}</p>
+              </div>
+            ) : (
+              <form onSubmit={manejarGuardarResenaCuenta} className="modal-review-form" aria-label={`Formulario para valorar ${productoParaCalificar.nombre}`}>
+                <fieldset className="star-rating-fieldset">
+                  <legend className="star-rating-legend">
+                    Puntuación (1 a 5 estrellas) <span className="required-star">*</span>
+                  </legend>
+                  <div className="star-picker-buttons" role="radiogroup" aria-label="Calificación de 1 a 5 estrellas">
+                    {[1, 2, 3, 4, 5].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        role="radio"
+                        aria-checked={calificacionEstrellas === num}
+                        className={`star-pick-btn ${calificacionEstrellas >= num ? 'is-selected' : ''}`}
+                        onClick={() => setCalificacionEstrellas(num)}
+                        aria-label={`${num} ${num === 1 ? 'estrella' : 'estrellas'}`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                    <span className="star-rating-label">
+                      {calificacionEstrellas === 5 && '5 de 5 - Excelente'}
+                      {calificacionEstrellas === 4 && '4 de 5 - Muy bueno'}
+                      {calificacionEstrellas === 3 && '3 de 5 - Aceptable'}
+                      {calificacionEstrellas === 2 && '2 de 5 - Regular'}
+                      {calificacionEstrellas === 1 && '1 de 5 - Deficiente'}
+                    </span>
+                  </div>
+                </fieldset>
+
+                <div className="form-field">
+                  <label htmlFor="modal-review-title">Título o resumen de tu opinión</label>
+                  <input
+                    type="text"
+                    id="modal-review-title"
+                    placeholder="Ej: Excelente respuesta en juegos y gran durabilidad"
+                    value={tituloResena}
+                    onChange={(e) => setTituloResena(e.target.value)}
+                    className="form-input"
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label htmlFor="modal-review-comment">
+                    Tu opinión sobre el periférico <span className="required-star">*</span>
+                  </label>
+                  <textarea
+                    id="modal-review-comment"
+                    rows="3"
+                    placeholder="Describe los aspectos clave de ergonomía, interruptores, sonido o conectividad..."
+                    value={comentarioResena}
+                    onChange={(e) => setComentarioResena(e.target.value)}
+                    className="form-input form-textarea"
+                    required
+                  />
+                </div>
+
+                <div className="form-buttons-row">
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={guardandoResena}
+                  >
+                    {guardandoResena ? 'Guardando...' : 'Guardar y publicar opinión'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setProductoParaCalificar(null)}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       )}
 
     </div>
