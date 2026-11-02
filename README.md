@@ -1,16 +1,37 @@
-# React + Vite
+# Tienda de periféricos
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Aplicación de comercio electrónico creada con React y Vite. Permite explorar un catálogo de periféricos, filtrar productos, administrar un carrito y consultar el seguimiento de pedidos.
 
-Currently, two official plugins are available:
+## Requisitos
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js y npm.
 
-## React Compiler
+## Iniciar el proyecto
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Instala las dependencias y ejecuta el servidor de desarrollo:
 
-## Expanding the ESLint configuration
+```bash
+npm install
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Vite mostrará la dirección local en la que se puede abrir la aplicación.
+
+## Comprobaciones
+
+```bash
+npm run lint
+npm run build
+```
+
+`lint` revisa el código con ESLint y `build` genera la versión de producción en `dist/`.
+
+## Organización del código
+
+- `src/modelo/`: datos de respaldo y lógica de acceso al catálogo y al carrito.
+- `src/controlador/`: contextos y hooks que coordinan el estado de la aplicación.
+- `src/vista/componentes/`: componentes reutilizables de la interfaz.
+- `src/vista/paginas/`: páginas asociadas a las rutas de la tienda.
+- `src/config/`: configuración de los clientes de Supabase.
+
+Los nombres internos de componentes y de lógica, así como los comentarios explicativos, están en español. Se conservan los términos que forman parte de las API de React y Supabase, los atributos HTML/ARIA, los nombres de tablas y campos externos, y las clases CSS compartidas con las hojas de estilo.
