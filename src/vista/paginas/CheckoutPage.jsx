@@ -4,7 +4,7 @@
  * Diseñado con experiencia de compra profesional y validación de pago en el cliente.
  */
 
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useCheckout } from '../../controlador/useCheckout'
 import { useAutenticacion } from '../../controlador/useAuth'
@@ -12,8 +12,280 @@ import { IconoPeriferico } from '../componentes/PeripheralIcon'
 
 export function PaginaCheckout() {
   const { usuario } = useAutenticacion()
-  const [correoReenviado, setCorreoReenviado] = useState(false)
   const navigate = useNavigate()
+
+  // Impresión limpia del comprobante sin cabecera ni pie de página del navegador
+  const manejarImprimirComprobante = () => {
+    const tituloOriginal = document.title
+    document.title = ''
+    window.print()
+    document.title = tituloOriginal
+  }
+
+  // Descarga directa del comprobante digital en formato HTML oficial (HU-08 / Opción 2)
+  const manejarDescargarComprobante = () => {
+    if (!ordenConfirmada) return
+
+    // Estructuración del documento digital oficial sin elementos interactivos de navegación web
+    const htmlContenido = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comprobante de Pedido #${ordenConfirmada.codigo} - Periféricos Quito</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f8fafc;
+      color: #1e293b;
+      margin: 0;
+      padding: 30px 15px;
+    }
+    .comprobante-card {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 32px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
+    .brand-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: 0.05em;
+      margin: 0 0 6px 0;
+    }
+    .brand-meta {
+      font-size: 13px;
+      color: #64748b;
+      margin: 2px 0;
+    }
+    .order-box {
+      text-align: right;
+    }
+    .order-number {
+      font-size: 20px;
+      font-weight: 800;
+      color: #2563eb;
+    }
+    .order-date {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+    .info-col h3 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #475569;
+      margin: 0 0 10px 0;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 6px;
+    }
+    .info-col p {
+      margin: 4px 0;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 24px;
+    }
+    th {
+      background-color: #f1f5f9;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 12px 14px;
+      border-bottom: 2px solid #cbd5e1;
+      text-align: left;
+    }
+    td {
+      padding: 12px 14px;
+      font-size: 14px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .totals-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 24px;
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 18px;
+    }
+    .payment-box h4 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      color: #334155;
+    }
+    .payment-box p {
+      margin: 4px 0;
+      font-size: 13px;
+      color: #64748b;
+    }
+    .totals-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .totals-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      color: #475569;
+    }
+    .totals-row.final {
+      font-size: 16px;
+      font-weight: 800;
+      color: #0f172a;
+      border-top: 2px solid #cbd5e1;
+      padding-top: 8px;
+      margin-top: 4px;
+    }
+    .free-badge {
+      color: #16a34a;
+      font-weight: 700;
+    }
+    .footer-note {
+      margin-top: 32px;
+      padding-top: 16px;
+      border-top: 1px dashed #cbd5e1;
+      text-align: center;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .comprobante-card { border: none; box-shadow: none; padding: 0; }
+    }
+    @media (max-width: 600px) {
+      .info-grid, .totals-grid, .header {
+        grid-template-columns: 1fr;
+        flex-direction: column;
+      }
+      .order-box { text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <div class="comprobante-card">
+    <div class="header">
+      <div>
+        <h1 class="brand-title">PERIFÉRICOS • PICHINCHA</h1>
+        <p class="brand-meta">RUC: 1792145678001 • Matriz: Quito, Ecuador</p>
+        <p class="brand-meta">soporte@perifericosquito.com</p>
+      </div>
+      <div class="order-box">
+        <div class="order-number">#${ordenConfirmada.codigo}</div>
+        <div class="order-date">Fecha: ${ordenConfirmada.fecha} - ${ordenConfirmada.hora}</div>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-col">
+        <h3>Datos de Facturación</h3>
+        <p><strong>Razón Social:</strong> ${ordenConfirmada.datosFiscales.razonSocial}</p>
+        <p><strong>${ordenConfirmada.datosFiscales.tipo}:</strong> ${ordenConfirmada.datosFiscales.identificacion}</p>
+        <p><strong>Dirección Fiscal:</strong> ${ordenConfirmada.datosFiscales.direccionFiscal || 'Quito, Pichincha'}</p>
+        <p><strong>Correo de Contacto:</strong> ${ordenConfirmada.cliente.correo}</p>
+      </div>
+      <div class="info-col">
+        <h3>Dirección de Entrega (Quito)</h3>
+        <p><strong>Sector:</strong> ${ordenConfirmada.direccionEnvio.sector}</p>
+        <p><strong>Calle Principal:</strong> ${ordenConfirmada.direccionEnvio.callePrincipal}</p>
+        <p><strong>Numeración:</strong> ${ordenConfirmada.direccionEnvio.numeracion}</p>
+        <p><strong>Referencia:</strong> ${ordenConfirmada.direccionEnvio.referencia || 'N/A'}</p>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Periférico</th>
+          <th class="text-center">Cant.</th>
+          <th class="text-right">Precio Unitario</th>
+          <th class="text-right">Subtotal</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${ordenConfirmada.articulos.map(item => `
+          <tr>
+            <td><strong>${item.nombre}</strong> (${item.categoria})</td>
+            <td class="text-center">${item.cantidad}</td>
+            <td class="text-right">$${item.precio.toFixed(2)}</td>
+            <td class="text-right">$${item.subtotal.toFixed(2)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    <div class="totals-grid">
+      <div class="payment-box">
+        <h4>Método de Pago</h4>
+        <p><strong>Modalidad:</strong> Tarjeta de crédito / débito</p>
+        <p><strong>Tarjeta:</strong> ${ordenConfirmada.marcaTarjeta.toUpperCase()} terminada en **** ${ordenConfirmada.ultimosDigitosTarjeta}</p>
+      </div>
+      <div class="totals-list">
+        <div class="totals-row">
+          <span>Subtotal:</span>
+          <span>$${ordenConfirmada.totales.subtotal.toFixed(2)}</span>
+        </div>
+        <div class="totals-row">
+          <span>Envío a Quito:</span>
+          <span>${ordenConfirmada.totales.envio === 0 ? '<span class="free-badge">Gratis</span>' : `$${ordenConfirmada.totales.envio.toFixed(2)}`}</span>
+        </div>
+        <div class="totals-row">
+          <span>IVA estimado (15%):</span>
+          <span>$${ordenConfirmada.totales.impuestos.toFixed(2)}</span>
+        </div>
+        <div class="totals-row final">
+          <span>Total Pagado:</span>
+          <span>$${ordenConfirmada.totales.total.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      Comprobante digital emitido de conformidad con la normativa tributaria ecuatoriana • Tienda de Periféricos Quito
+    </div>
+  </div>
+</body>
+</html>`
+
+    // Generar archivo blob y forzar descarga local en el navegador del cliente
+    const blob = new Blob([htmlContenido], { type: 'text/html;charset=utf-8' })
+    const urlDescarga = URL.createObjectURL(blob)
+    const enlace = document.createElement('a')
+    enlace.href = urlDescarga
+    enlace.download = `comprobante-${ordenConfirmada.codigo}.html`
+    document.body.appendChild(enlace)
+    enlace.click()
+    document.body.removeChild(enlace)
+    URL.revokeObjectURL(urlDescarga)
+  }
 
   const {
     // Direcciones
@@ -79,6 +351,28 @@ export function PaginaCheckout() {
                 Tu pedido ha sido registrado con éxito en nuestro sistema de inventario de Pichincha.
               </p>
             </div>
+          </div>
+
+          {/* Sección de descarga digital (Opción 2) - Exclusiva en pantalla, oculta en impresión */}
+          <div className="receipt-digital-download-box no-print">
+            <div className="receipt-download-info">
+              <span className="receipt-download-icon" aria-hidden="true">💾</span>
+              <div>
+                <span className="receipt-download-tag">COPIA DIGITAL OFICIAL</span>
+                <h2 className="receipt-download-title">Descarga tu comprobante de compra</h2>
+                <p className="receipt-download-desc">
+                  Guarda un archivo digital (.html) en tu dispositivo con el desglose de IVA (15%), datos fiscales y detalle de periféricos.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn-primary btn-download-receipt"
+              onClick={manejarDescargarComprobante}
+              aria-label="Descargar comprobante digital en el equipo"
+            >
+              📥 Descargar comprobante digital
+            </button>
           </div>
 
           <div className="receipt-card-paper">
@@ -153,7 +447,6 @@ export function PaginaCheckout() {
                 <h2 className="receipt-section-heading">Método de Pago</h2>
                 <p><strong>Modalidad:</strong> Tarjeta de crédito / débito</p>
                 <p><strong>Tarjeta:</strong> {ordenConfirmada.marcaTarjeta.toUpperCase()} terminada en <strong>**** {ordenConfirmada.ultimosDigitosTarjeta}</strong></p>
-                <p><strong>Ref. Transacción:</strong> <code>{ordenConfirmada.referenciaPago}</code></p>
               </div>
 
               <div className="receipt-totals-box">
@@ -186,44 +479,8 @@ export function PaginaCheckout() {
 
           </div>
 
-          {/* Confirmación con Correo Electrónico Oficial (Release 3) */}
-          <div className="receipt-email-confirmation-box" role="region" aria-label="Confirmación oficial por correo electrónico">
-            <div className="email-conf-header">
-              <span className="email-conf-icon" aria-hidden="true">📧</span>
-              <div>
-                <strong className="email-conf-title">
-                  Confirmación de orden y factura electrónica despachada por correo
-                </strong>
-                <p className="email-conf-desc">
-                  Hemos enviado la confirmación de compra, el desglose de artículos y el comprobante con validez tributaria a{' '}
-                  <strong>{ordenConfirmada.cliente.correo}</strong>.
-                </p>
-              </div>
-            </div>
-
-            <div className="email-conf-actions">
-              <button
-                type="button"
-                className="btn-secondary btn-resend-email"
-                onClick={() => {
-                  setCorreoReenviado(true)
-                  setTimeout(() => setCorreoReenviado(false), 5000)
-                }}
-                aria-label={`Reenviar comprobante por correo a ${ordenConfirmada.cliente.correo}`}
-              >
-                {correoReenviado ? '✓ Correo reenviado' : 'Reenviar comprobante por correo'}
-              </button>
-
-              {correoReenviado && (
-                <span className="email-sent-badge" role="status" aria-live="polite">
-                  ✓ Se envió una copia adicional a {ordenConfirmada.cliente.correo}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Acciones del Comprobante */}
-          <div className="receipt-actions-row">
+          {/* Acciones del Comprobante (ocultas en impresión física) */}
+          <div className="receipt-actions-row no-print">
             <button
               type="button"
               className="btn-primary"
@@ -237,7 +494,16 @@ export function PaginaCheckout() {
             <button
               type="button"
               className="btn-secondary"
-              onClick={() => window.print()}
+              onClick={manejarDescargarComprobante}
+              aria-label="Descargar comprobante digital en el equipo"
+            >
+              📥 Descargar comprobante digital
+            </button>
+
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={manejarImprimirComprobante}
               aria-label="Imprimir comprobante de venta"
             >
               🖨️ Imprimir comprobante
@@ -662,7 +928,7 @@ export function PaginaCheckout() {
               <div className="helper-text-block">
                 <strong>Pasarela de pago segura:</strong>
                 <p>
-                  Aceptamos tarjetas de crédito y débito Visa, Mastercard, American Express y Diners Club con validación directa y cifrado.
+                  Aceptamos tarjetas de crédito y débito Visa, Mastercard, American Express y Diners Club con cifrado y procesamiento seguro.
                 </p>
               </div>
             </div>
@@ -760,13 +1026,6 @@ export function PaginaCheckout() {
               </div>
 
             </div>
-
-            <div className="payment-security-notice">
-              <span className="lock-icon" aria-hidden="true">🛡️</span>
-              <span>
-                <strong>Privacidad garantizada:</strong> Los datos de tu tarjeta se validan antes de confirmar el pago.
-              </span>
-            </div>
           </section>
 
         </div>
@@ -856,10 +1115,6 @@ export function PaginaCheckout() {
                 <span>Confirmar pedido (${totales.total.toFixed(2)})</span>
               )}
             </button>
-
-            <p className="checkout-guarantee-note">
-              ✓ Descuento de stock en tiempo real mediante procedimiento transaccional.
-            </p>
           </div>
         </aside>
 

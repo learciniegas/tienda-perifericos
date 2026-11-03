@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { obtenerProductoPorId, obtenerResenasProducto, guardarResenaProducto } from '../../modelo/catalogoModelo'
+import { obtenerProductoPorId, obtenerResenasProducto, guardarResenaProducto, verificarCompraUsuario } from '../../modelo/catalogoModelo'
 import { useCarrito } from '../../controlador/useCarrito'
 import { useAutenticacion } from '../../controlador/useAuth'
 import { IconoPeriferico } from '../componentes/PeripheralIcon'
@@ -44,6 +44,30 @@ export function PaginaProductoDetalle() {
   const [enviandoResena, setEnviandoResena] = useState(false)
   const [mensajeResenaExito, setMensajeResenaExito] = useState('')
   const [errorResena, setErrorResena] = useState('')
+  const [comproProducto, setComproProducto] = useState(false)
+  const [verificandoCompra, setVerificandoCompra] = useState(false)
+
+  // Verificar en Supabase TX si el usuario compró este periférico (fuente de verdad)
+  useEffect(() => {
+    let activo = true
+    if (usuario?.autenticado && usuario?.id && id) {
+      verificarCompraUsuario(id, usuario.id)
+        .then((compro) => {
+          if (!activo) return
+          setComproProducto(compro)
+          setVerificandoCompra(false)
+        })
+        .catch(() => {
+          if (!activo) return
+          setComproProducto(false)
+          setVerificandoCompra(false)
+        })
+    }
+
+    return () => {
+      activo = false
+    }
+  }, [id, usuario])
 
   useEffect(() => {
     let activo = true
@@ -91,11 +115,21 @@ export function PaginaProductoDetalle() {
     }
   }, [id])
 
-  // Publicar nueva reseña (Release 3)
+  // Publicar nueva reseña (comprobando compra previa en Supabase TX)
   const manejarGuardarResena = async (e) => {
     e.preventDefault()
     setErrorResena('')
     setMensajeResenaExito('')
+
+    if (!usuario?.autenticado) {
+      setErrorResena('Debes iniciar sesión con tu cuenta para dejar una reseña.')
+      return
+    }
+
+    if (!comproProducto) {
+      setErrorResena('Solo los clientes que hayan comprado este periférico pueden calificarlo y dejar una reseña.')
+      return
+    }
 
     if (!nuevoComentario.trim()) {
       setErrorResena('Por favor escribe tu opinión sobre este periférico.')
@@ -110,7 +144,7 @@ export function PaginaProductoDetalle() {
         calificacion: nuevaCalif,
         titulo: nuevoTitulo.trim() || 'Opinión de compra',
         comentario: nuevoComentario.trim(),
-        nombreAutor: nuevoNombre.trim() || usuario?.nombre || 'Cliente Verificado',
+        nombreAutor: nuevoNombre.trim() || (usuario?.nombre !== 'Invitado' ? usuario.nombre : 'Cliente Verificado'),
         ciudad: nuevaCiudad.trim() || 'Quito, Pichincha',
         usuarioId: usuario?.id
       })
@@ -458,18 +492,40 @@ export function PaginaProductoDetalle() {
             <hr className="reviews-card-divider" />
 
             <div className="write-review-callout">
-              <h4 className="write-callout-heading">¿Compraste este periférico?</h4>
-              <p className="write-callout-text">
-                Comparte tu experiencia de uso y durabilidad para orientar a otros compradores de Pichincha.
-              </p>
-              <button
-                type="button"
-                className="btn-primary btn-toggle-review"
-                onClick={() => setMostrarFormularioResena((prev) => !prev)}
-                aria-expanded={mostrarFormularioResena}
-              >
-                {mostrarFormularioResena ? 'Cerrar formulario de opinión' : 'Escribir una opinión'}
-              </button>
+              <h4 className="write-callout-heading">Opiniones de compradores</h4>
+              
+              {!usuario?.autenticado ? (
+                <div className="review-auth-prompt">
+                  <p className="write-callout-text">
+                    Inicia sesión con tu cuenta para comprobar tu compra y valorar este producto.
+                  </p>
+                  <Link to={`/login?redirect=/producto/${id}#resenas`} className="btn-secondary btn-full">
+                    Iniciar sesión para opinar
+                  </Link>
+                </div>
+              ) : verificandoCompra ? (
+                <p className="write-callout-text">Verificando historial de compra en Pichincha...</p>
+              ) : !comproProducto ? (
+                <div className="review-auth-prompt">
+                  <p className="write-callout-text">
+                    🔒 Solo los clientes que hayan adquirido este producto en la tienda pueden compartir su valoración y reseña.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="write-callout-text">
+                    ¡Compra verificada! Comparte tu experiencia de uso y durabilidad con la comunidad.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-primary btn-toggle-review"
+                    onClick={() => setMostrarFormularioResena((prev) => !prev)}
+                    aria-expanded={mostrarFormularioResena}
+                  >
+                    {mostrarFormularioResena ? 'Cerrar formulario de opinión' : '★ Escribir una opinión'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 

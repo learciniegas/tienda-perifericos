@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabaseCore } from '../config/supabaseClient'
 import { ContextoAutenticacion } from './contextos'
+import { validarNombrePersona, validarCorreoElectronico } from '../modelo/validadorModelo'
 
 const USUARIO_INVITADO = {
   id: null,
@@ -160,77 +161,94 @@ export function ProveedorAutenticacion({ children }) {
     }
   }, [])
 
-  // HU-10: Registro si no hay cuenta (mantiene el carrito intacto)
+  // HU-10: Registro estricto con validaciones de base de datos y envío de confirmación por correo
   const registrarse = useCallback(async (correo, contrasena, nombreCompleto) => {
-    if (!correo || !contrasena || !nombreCompleto) {
-      throw new Error('Todos los campos son obligatorios para crear tu cuenta.')
+    // Validar nombre con el check constraint de Postgres (sin números, 2-100 caracteres)
+    const valNombre = validarNombrePersona(nombreCompleto)
+    if (!valNombre.esValido) {
+      throw new Error(valNombre.mensaje)
+    }
+
+    // Validar correo con el check constraint de Postgres
+    const valCorreo = validarCorreoElectronico(correo)
+    if (!valCorreo.esValido) {
+      throw new Error(valCorreo.mensaje)
+    }
+
+    if (!contrasena || contrasena.length < 6) {
+      throw new Error('La contraseña debe tener al menos 6 caracteres.')
     }
 
     const correoLimpio = correo.trim().toLowerCase()
     const nombreLimpio = nombreCompleto.trim()
 
-    let uid = 'usr-' + Date.now()
-
-    try {
-      const { data, error } = await supabaseCore.auth.signUp({
-        email: correoLimpio,
-        password: contrasena,
-        options: {
-          data: {
-            nombre_completo: nombreLimpio,
-            nombre: nombreLimpio
-          }
-        }
-      })
-
-      if (!error && data?.user?.id) {
-        uid = data.user.id
-      }
-    } catch (err) {
-      console.warn('Registro directo en Supabase completado con respaldo:', err)
-    }
-
-    // Respaldar cuenta registrada para permitir inicio de sesión transparente
-    try {
-      const cuentasRegistradas = JSON.parse(localStorage.getItem(CLAVE_USUARIOS_REGISTRADOS) || '[]')
-      const nuevaCuenta = { id: uid, email: correoLimpio, password: contrasena, nombre: nombreLimpio }
-      const filtradas = cuentasRegistradas.filter(c => c.email !== correoLimpio)
-      localStorage.setItem(CLAVE_USUARIOS_REGISTRADOS, JSON.stringify([...filtradas, nuevaCuenta]))
-    } catch {
-      // Ignorar error de almacenamiento
-    }
-
-    const usuarioNuevo = {
-      id: uid,
+    // Llamada oficial a Supabase Auth para registro y envío de correo de verificación
+    const { data, error } = await supabaseCore.auth.signUp({
       email: correoLimpio,
-      nombre: nombreLimpio,
-      autenticado: true
-    }
-    setUsuario(usuarioNuevo)
-    return usuarioNuevo
-  }, [])
-
-  // Recuperar Contraseña (Gestión Perfil)
-  const recuperarContrasena = useCallback(async (correo) => {
-    if (!correo || !correo.trim()) {
-      throw new Error('Por favor ingresa tu correo electrónico registrado.')
-    }
-
-    try {
-      const { error } = await supabaseCore.auth.resetPasswordForEmail(correo.trim().toLowerCase(), {
-        redirectTo: window.location.origin + '/login'
-      })
-      if (error) {
-        console.warn('Aviso de recuperación en Supabase:', error.message)
+      password: contrasena,
+      options: {
+        emailRedirectTo: window.location.origin + '/login',
+        data: {
+          nombre_completo: nombreLimpio,
+          nombre: nombreLimpio
+        }
       }
-      return { exito: true, mensaje: `Se ha enviado un enlace de recuperación al correo ${correo}.` }
-    } catch (err) {
-      console.warn('Recuperación con respaldo:', err)
-      return { exito: true, mensaje: `Se ha enviado un enlace de recuperación al correo ${correo}.` }
+    })
+
+    if (error) {
+      if (error.message.includes('already registered')) {
+        throw new Error('Este correo electrónico ya se encuentra registrado. Por favor inicia sesión.')
+      }
+      throw new Error(error.message || 'Error al registrar la cuenta en la base de datos.')
+    }
+
+    // Si Supabase requiere confirmación por correo, la sesión viene nula
+    if (data?.user && !data?.session) {
+      return {
+        requiereConfirmacion: true,
+        email: correoLimpio,
+        nombre: nombreLimpio
+      }
+    }
+
+    if (data?.session && data?.user) {
+      const usuarioActivo = {
+        id: data.user.id,
+        email: data.user.email,
+        nombre: nombreLimpio,
+        autenticado: true
+      }
+      setUsuario(usuarioActivo)
+      return usuarioActivo
+    }
+
+    return {
+      requiereConfirmacion: true,
+      email: correoLimpio,
+      nombre: nombreLimpio
     }
   }, [])
 
-  // Cerrar Sesión
+  // Recuperar Contraseña mediante enlace seguro al correo
+  const recuperarContrasena = useCallback(async (correo) => {
+    const valCorreo = validarCorreoElectronico(correo)
+    if (!valCorreo.esValido) {
+      throw new Error(valCorreo.mensaje)
+    }
+
+    const correoLimpio = correo.trim().toLowerCase()
+    const { error } = await supabaseCore.auth.resetPasswordForEmail(correoLimpio, {
+      redirectTo: window.location.origin + '/restablecer-contrasena'
+    })
+
+    if (error) {
+      throw new Error(error.message || 'No fue posible despachar el correo de recuperación.')
+    }
+
+    return { exito: true, mensaje: `Se ha enviado un enlace de recuperación seguro al correo ${correoLimpio}.` }
+  }, [])
+
+  // Cerrar Sesión y limpiar almacenamiento local
   const cerrarSesion = useCallback(async () => {
     try {
       await supabaseCore.auth.signOut()
@@ -239,6 +257,8 @@ export function ProveedorAutenticacion({ children }) {
     }
     try {
       localStorage.removeItem(CLAVE_SESION_LOCAL)
+      localStorage.removeItem('ultimo_pedido_generado')
+      localStorage.removeItem('tienda_perifericos_pedidos_locales_v1')
     } catch {
       // Ignorar
     }

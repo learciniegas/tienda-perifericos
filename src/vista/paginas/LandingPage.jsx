@@ -133,7 +133,7 @@ export function PaginaInicio() {
                 <Link to="/login" className="btn-primary auth-btn-cta">
                   Iniciar sesión
                 </Link>
-                <Link to="/login?mode=register" className="btn-secondary auth-btn-register">
+                <Link to="/registro" className="btn-secondary auth-btn-register">
                   Crear cuenta gratis
                 </Link>
               </div>

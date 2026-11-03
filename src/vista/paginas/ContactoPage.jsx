@@ -8,12 +8,14 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabaseCore } from '../../config/supabaseClient'
 import { useAutenticacion } from '../../controlador/useAuth'
+import { validarNombrePersona, validarCorreoElectronico } from '../../modelo/validadorModelo'
 
 export function PaginaContacto() {
   const { usuario } = useAutenticacion()
 
-  const [nombre, setNombre] = useState(usuario?.nombre || '')
-  const [correo, setCorreo] = useState(usuario?.email || '')
+  // Precargar nombre y correo solo si hay una sesión real activa (evitar "Invitado")
+  const [nombre, setNombre] = useState(() => (usuario?.autenticado && usuario?.nombre !== 'Invitado' ? usuario.nombre : ''))
+  const [correo, setCorreo] = useState(() => (usuario?.autenticado && usuario?.email ? usuario.email : ''))
   const [asunto, setAsunto] = useState('Consulta sobre un pedido')
   const [mensaje, setMensaje] = useState('')
   const [cargando, setCargando] = useState(false)
@@ -25,16 +27,28 @@ export function PaginaContacto() {
     setError('')
     setMensajeExito('')
 
-    if (!nombre.trim()) {
-      setError('Por favor ingresa tu nombre completo.')
+    // Validación conforme a checks de base de datos
+    const valNombre = validarNombrePersona(nombre)
+    if (!valNombre.esValido) {
+      setError(valNombre.mensaje)
       return
     }
-    if (!correo.trim() || !correo.includes('@')) {
-      setError('Por favor ingresa un correo electrónico válido.')
+
+    const valCorreo = validarCorreoElectronico(correo)
+    if (!valCorreo.esValido) {
+      setError(valCorreo.mensaje)
       return
     }
-    if (!mensaje.trim()) {
-      setError('Por favor escribe tu consulta o requerimiento.')
+
+    const asuntoLimpio = asunto.trim()
+    if (asuntoLimpio.length < 3 || asuntoLimpio.length > 150) {
+      setError('El asunto debe tener entre 3 y 150 caracteres.')
+      return
+    }
+
+    const mensajeLimpio = mensaje.trim()
+    if (mensajeLimpio.length < 10 || mensajeLimpio.length > 2000) {
+      setError('El mensaje debe contener al menos 10 caracteres (máximo 2000).')
       return
     }
 
@@ -46,8 +60,8 @@ export function PaginaContacto() {
         usuario_id: (usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) ? usuario.id : null,
         nombre: nombre.trim(),
         correo: correo.trim().toLowerCase(),
-        asunto: asunto.trim(),
-        mensaje: mensaje.trim()
+        asunto: asuntoLimpio,
+        mensaje: mensajeLimpio
       }
 
       const { error: errorSupabase } = await supabaseCore
@@ -55,7 +69,7 @@ export function PaginaContacto() {
         .insert(payload)
 
       if (errorSupabase) {
-        console.warn('Aviso de inserción en Supabase, aplicando confirmación garantizada:', errorSupabase.message)
+        throw new Error(errorSupabase.message || 'Error al registrar tu mensaje.')
       }
 
       setMensajeExito('¡Tu mensaje ha sido recibido con éxito! Un especialista de soporte en Pichincha te responderá en menos de 24 horas hábiles.')
@@ -63,8 +77,7 @@ export function PaginaContacto() {
       setCargando(false)
     } catch (err) {
       console.warn('Error en formulario de contacto:', err)
-      setMensajeExito('¡Tu mensaje ha sido recibido con éxito! Un especialista de soporte en Pichincha te responderá en menos de 24 horas hábiles.')
-      setMensaje('')
+      setError('No se pudo enviar el mensaje. Por favor verifica tus datos e inténtalo nuevamente.')
       setCargando(false)
     }
   }

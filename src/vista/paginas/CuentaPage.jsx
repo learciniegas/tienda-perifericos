@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAutenticacion } from '../../controlador/useAuth'
 import { CheckoutModelo, SECTORES_QUITO } from '../../modelo/checkoutModelo'
-import { validarIdentificacion } from '../../modelo/validadorModelo'
+import { validarIdentificacion, validarNombrePersona, validarCorreoElectronico } from '../../modelo/validadorModelo'
 import { guardarResenaProducto } from '../../modelo/catalogoModelo'
 import { IconoPeriferico } from '../componentes/PeripheralIcon'
 
@@ -77,10 +77,12 @@ export function PaginaCuenta() {
   useEffect(() => {
     let activo = true
 
+    if (!usuario?.autenticado || !usuario?.id) return
+
     Promise.all([
       CheckoutModelo.obtenerDirecciones(usuario),
       CheckoutModelo.obtenerDatosFiscales(usuario),
-      CheckoutModelo.obtenerHistorialPedidos()
+      CheckoutModelo.obtenerHistorialPedidos(usuario.id)
     ]).then(([dirs, fisc, hist]) => {
       if (!activo) return
       setDirecciones(dirs)
@@ -95,17 +97,17 @@ export function PaginaCuenta() {
     }
   }, [usuario])
 
-  // Sincronizar periódicamente el estado de los pedidos cada 5s para reflejar el avance de 2 min (HU-15)
+  // Sincronizar periódicamente el estado de los pedidos directamente desde Supabase TX
   useEffect(() => {
-    if (pestanaActiva !== 'pedidos' || !usuario?.autenticado) return
+    if (pestanaActiva !== 'pedidos' || !usuario?.autenticado || !usuario?.id) return
 
-    const intervalo = setInterval(() => {
-      const actualizados = CheckoutModelo.obtenerHistorialPedidos()
+    const intervalo = setInterval(async () => {
+      const actualizados = await CheckoutModelo.obtenerHistorialPedidos(usuario.id)
       setHistorialPedidos(actualizados)
-    }, 5000)
+    }, 15000)
 
     return () => clearInterval(intervalo)
-  }, [pestanaActiva, usuario?.autenticado])
+  }, [pestanaActiva, usuario?.autenticado, usuario?.id])
 
   // Redirigir a login si es invitado
   if (!usuario?.autenticado) {
@@ -210,16 +212,29 @@ export function PaginaCuenta() {
     setDatosFiscales(actualizados)
   }
 
-  // --- Manejador de Perfil ---
+  // --- Manejador de Perfil con validación estricta de base de datos ---
   const guardarPerfil = async (e) => {
     e.preventDefault()
     setMensajePerfil('')
+
+    const valNombre = validarNombrePersona(nombreEditado)
+    if (!valNombre.esValido) {
+      setMensajePerfil(`⚠️ ${valNombre.mensaje}`)
+      return
+    }
+
+    const valCorreo = validarCorreoElectronico(correoEditado)
+    if (!valCorreo.esValido) {
+      setMensajePerfil(`⚠️ ${valCorreo.mensaje}`)
+      return
+    }
+
     try {
-      await actualizarPerfil({ nombre: nombreEditado, email: correoEditado })
+      await actualizarPerfil({ nombre: nombreEditado.trim(), email: correoEditado.trim().toLowerCase() })
       setMensajePerfil('✓ Perfil actualizado con éxito.')
       setTimeout(() => setMensajePerfil(''), 4000)
-    } catch {
-      setMensajePerfil('Ocurrió un error al guardar los cambios.')
+    } catch (err) {
+      setMensajePerfil(`⚠️ ${err.message || 'Ocurrió un error al guardar los cambios.'}`)
     }
   }
 

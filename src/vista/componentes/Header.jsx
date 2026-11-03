@@ -15,7 +15,6 @@ export function Encabezado() {
   const { cantidadTotal } = useCarrito()
   const { usuario, cerrarSesion } = useAutenticacion()
   const [terminoBusqueda, setTerminoBusqueda] = useState('')
-  const [categoriaFiltro, setCategoriaFiltro] = useState('')
   const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false)
   const referenciaMenuUsuario = useRef(null)
   const referenciaBotonUsuario = useRef(null)
@@ -40,12 +39,12 @@ export function Encabezado() {
     return () => document.removeEventListener('mousedown', cerrarMenuAlHacerClicFuera)
   }, [])
 
+  // Búsqueda simplificada y directa sin selector de categorías
   const ejecutarBusqueda = (evento) => {
     evento.preventDefault()
     const termino = terminoBusqueda.trim()
     const parametros = new URLSearchParams()
     if (termino) parametros.set('q', termino)
-    if (categoriaFiltro) parametros.set('cat', categoriaFiltro)
 
     const consulta = parametros.toString()
     navigate(consulta ? `/catalogo?${consulta}` : '/catalogo')
@@ -68,40 +67,17 @@ export function Encabezado() {
             </div>
           </Link>
 
-          {/* Selector de Entrega Exclusivo para Pichincha */}
+          {/* Selector de Entrega Exclusivo para Pichincha (sin nombre de usuario) */}
           <div className="nav-delivery-widget" tabIndex="0" role="region" aria-label="Zona de cobertura de envíos">
             <span className="nav-icon-pin" aria-hidden="true">📍</span>
             <div className="nav-delivery-text">
-              <span className="nav-line-1">
-                {usuario.autenticado ? `Enviar a ${usuario.nombre}` : 'Entregas en'}
-              </span>
+              <span className="nav-line-1">Entregas en</span>
               <span className="nav-line-2">Pichincha, Ecuador</span>
             </div>
           </div>
 
-          {/* Omnibox / Barra de Búsqueda Integrada */}
+          {/* Omnibox / Barra de Búsqueda Directa */}
           <form className="nav-search-bar" role="search" onSubmit={ejecutarBusqueda}>
-            <label htmlFor="search-category-select" className="sr-only">
-              Seleccionar categoría para buscar
-            </label>
-            <div className="search-category-wrapper">
-              <select
-                id="search-category-select"
-                className="search-category-dropdown"
-                value={categoriaFiltro}
-                onChange={(e) => setCategoriaFiltro(e.target.value)}
-                aria-label="Filtrar búsqueda por categoría"
-              >
-                <option value="">Todos</option>
-                <option value="teclados">Teclados</option>
-                <option value="ratones">Ratones</option>
-                <option value="auriculares">Auriculares</option>
-                <option value="webcams">Webcams</option>
-                <option value="alfombrillas">Alfombrillas</option>
-              </select>
-              <IconoPeriferico tipo="chevron-down" size={12} className="category-select-arrow" />
-            </div>
-
             <label htmlFor="main-search-input" className="sr-only">
               Buscar teclados, ratones, auriculares y más
             </label>
@@ -188,7 +164,7 @@ export function Encabezado() {
                         </Link>
                       </li>
                       <li>
-                        <Link to="/login?mode=register" onClick={() => setMenuUsuarioAbierto(false)}>
+                        <Link to="/registro" onClick={() => setMenuUsuarioAbierto(false)}>
                           Crear cuenta nueva
                         </Link>
                       </li>
@@ -301,14 +277,35 @@ export function Encabezado() {
                 Ayuda / FAQ
               </NavLink>
             </li>
-            <li>
-              <NavLink
-                to={usuario.autenticado ? "/cuenta" : "/login"}
-                className={({ isActive }) => `sub-link ${isActive ? 'active' : ''}`}
-              >
-                {usuario.autenticado ? "Mi Cuenta" : "Iniciar Sesión"}
-              </NavLink>
-            </li>
+            {!usuario.autenticado ? (
+              <>
+                <li>
+                  <NavLink
+                    to="/login"
+                    className={({ isActive }) => `sub-link ${isActive ? 'active' : ''}`}
+                  >
+                    Iniciar Sesión
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink
+                    to="/registro"
+                    className={({ isActive }) => `sub-link ${isActive ? 'active' : ''}`}
+                  >
+                    Crear Cuenta
+                  </NavLink>
+                </li>
+              </>
+            ) : (
+              <li>
+                <NavLink
+                  to="/cuenta"
+                  className={({ isActive }) => `sub-link ${isActive ? 'active' : ''}`}
+                >
+                  Mi Cuenta
+                </NavLink>
+              </li>
+            )}
           </ul>
 
         </div>

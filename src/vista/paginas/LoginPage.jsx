@@ -9,16 +9,38 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAutenticacion } from '../../controlador/useAuth'
 import { IconoPeriferico } from '../componentes/PeripheralIcon'
+import { validarNombrePersona, validarCorreoElectronico } from '../../modelo/validadorModelo'
 
-export function PaginaLogin() {
+export function PaginaLogin({ modoInicial = null }) {
   const [parametrosUrl] = useSearchParams()
   const destinoRedireccion = parametrosUrl.get('redirect') || '/catalogo'
   const navigate = useNavigate()
 
   const { iniciarSesion, registrarse, recuperarContrasena } = useAutenticacion()
 
-  // Modo: 'login' | 'registro' | 'recuperar'
-  const [modo, setModo] = useState(() => (parametrosUrl.get('mode') === 'register' ? 'registro' : 'login'))
+  // Modo calculado según props de ruta o parámetros de URL
+  const modoCalculado = modoInicial || (
+    parametrosUrl.get('mode') === 'register' || parametrosUrl.get('mode') === 'registro'
+      ? 'registro'
+      : (parametrosUrl.get('mode') === 'recuperar' || parametrosUrl.get('mode') === 'reset' ? 'recuperar' : 'login')
+  )
+
+  const [modoManual, setModoManual] = useState(null)
+  const [clavePrevia, setClavePrevia] = useState(`${modoInicial}_${parametrosUrl.get('mode')}`)
+
+  const claveActual = `${modoInicial}_${parametrosUrl.get('mode')}`
+  if (claveActual !== clavePrevia) {
+    setClavePrevia(claveActual)
+    setModoManual(null)
+  }
+
+  const modo = modoManual || modoCalculado
+
+  const cambiarModo = (nuevoModo) => {
+    setModoManual(nuevoModo)
+    setError('')
+    setMensajeExito('')
+  }
 
   // Campos de formulario
   const [correo, setCorreo] = useState('')
@@ -37,8 +59,9 @@ export function PaginaLogin() {
     setError('')
     setMensajeExito('')
 
-    if (!correo.trim()) {
-      setError('Por favor ingresa tu correo electrónico.')
+    const valCorreo = validarCorreoElectronico(correo)
+    if (!valCorreo.esValido) {
+      setError(valCorreo.mensaje)
       return
     }
     if (!contrasena) {
@@ -60,20 +83,26 @@ export function PaginaLogin() {
     }
   }
 
-  // Manejador de Registro de Cuenta (HU-10)
+  // Manejador de Registro de Cuenta con validaciones de base de datos (HU-10)
   const manejarRegistro = async (e) => {
     e.preventDefault()
     setError('')
     setMensajeExito('')
 
-    if (!nombreCompleto.trim()) {
-      setError('Por favor ingresa tu nombre y apellido completos.')
+    // Validación según check de Postgres (chk_perfiles_nombre: sin números)
+    const valNombre = validarNombrePersona(nombreCompleto)
+    if (!valNombre.esValido) {
+      setError(valNombre.mensaje)
       return
     }
-    if (!correo.trim() || !correo.includes('@')) {
-      setError('Por favor ingresa un correo electrónico válido.')
+
+    // Validación según check de Postgres (chk_contacto_correo)
+    const valCorreo = validarCorreoElectronico(correo)
+    if (!valCorreo.esValido) {
+      setError(valCorreo.mensaje)
       return
     }
+
     if (contrasena.length < 6) {
       setError('La contraseña debe tener al menos 6 caracteres.')
       return
@@ -82,7 +111,15 @@ export function PaginaLogin() {
     setCargando(true)
 
     try {
-      await registrarse(correo, contrasena, nombreCompleto)
+      const resp = await registrarse(correo, contrasena, nombreCompleto)
+      if (resp?.requiereConfirmacion) {
+        setMensajeExito(`¡Cuenta registrada con éxito! Hemos enviado un enlace de confirmación al correo ${correo}. Por favor verifica tu bandeja de entrada para activar tu cuenta antes de iniciar sesión.`)
+        setCargando(false)
+        setNombreCompleto('')
+        setContrasena('')
+        return
+      }
+
       setMensajeExito('¡Cuenta creada con éxito! Tu carrito se encuentra activo.')
       setTimeout(() => {
         navigate(destinoRedireccion)
@@ -137,11 +174,7 @@ export function PaginaLogin() {
             aria-selected={modo === 'login'}
             id="tab-login"
             className={`auth-tab-btn ${modo === 'login' ? 'active' : ''}`}
-            onClick={() => {
-              setModo('login')
-              setError('')
-              setMensajeExito('')
-            }}
+            onClick={() => cambiarModo('login')}
           >
             Iniciar Sesión
           </button>
@@ -151,11 +184,7 @@ export function PaginaLogin() {
             aria-selected={modo === 'registro'}
             id="tab-registro"
             className={`auth-tab-btn ${modo === 'registro' ? 'active' : ''}`}
-            onClick={() => {
-              setModo('registro')
-              setError('')
-              setMensajeExito('')
-            }}
+            onClick={() => cambiarModo('registro')}
           >
             Crear Cuenta
           </button>
@@ -215,11 +244,7 @@ export function PaginaLogin() {
                 <button
                   type="button"
                   className="btn-forgot-password"
-                  onClick={() => {
-                    setModo('recuperar')
-                    setError('')
-                    setMensajeExito('')
-                  }}
+                  onClick={() => cambiarModo('recuperar')}
                 >
                   ¿Olvidaste tu contraseña?
                 </button>
@@ -366,11 +391,7 @@ export function PaginaLogin() {
             <button
               type="button"
               className="btn-secondary btn-full mt-2"
-              onClick={() => {
-                setModo('login')
-                setError('')
-                setMensajeExito('')
-              }}
+              onClick={() => cambiarModo('login')}
             >
               ← Volver al inicio de sesión
             </button>

@@ -22,7 +22,6 @@ export const SECTORES_QUITO = [
 
 const CLAVE_DIRECCIONES_LOCAL = 'tienda_perifericos_direcciones_v1'
 const CLAVE_FISCALES_LOCAL = 'tienda_perifericos_fiscales_v1'
-const CLAVE_PEDIDOS_LOCAL = 'tienda_perifericos_historial_pedidos_v1'
 
 // Duración de cada fase del pedido: 2 minutos (120,000 milisegundos)
 export const INTERVALO_ESTADO_MS = 2 * 60 * 1000
@@ -485,68 +484,103 @@ export const CheckoutModelo = {
       ]
     }
 
-    // Persistir el último pedido para consulta inmediata
-    try {
-      localStorage.setItem('ultimo_pedido_generado', JSON.stringify(comprobantePedido))
-      
-      // Guardar en el historial general de pedidos del cliente
-      const historialPrevio = JSON.parse(localStorage.getItem(CLAVE_PEDIDOS_LOCAL) || '[]')
-      const nuevoHistorial = [comprobantePedido, ...historialPrevio.filter(p => p.codigo !== codigoOrden)]
-      this.guardarHistorialPedidos(nuevoHistorial)
-    } catch (e) {
-      console.warn('Error guardando pedido en historial local:', e)
-    }
-
+    // Retornar el comprobante generado sin almacenar pedidos en localStorage
     return comprobantePedido
   },
 
-  guardarHistorialPedidos(pedidos) {
-    try {
-      localStorage.setItem(CLAVE_PEDIDOS_LOCAL, JSON.stringify(pedidos))
-    } catch (e) {
-      console.warn('Error guardando historial de pedidos:', e)
-    }
-  },
-
   /**
-   * Obtiene el historial de pedidos generados por el cliente (HU-15).
-   * Evalúa y actualiza automáticamente los pedidos que han cumplido 2 minutos por fase.
+   * Obtiene el historial de pedidos generados por el cliente desde la base de datos (Supabase TX).
+   * La base de datos es la única fuente de verdad (HU-15).
+   * @param {string} usuarioId
+   * @returns {Promise<Array>}
    */
-  obtenerHistorialPedidos() {
+  async obtenerHistorialPedidos(usuarioId) {
+    if (!usuarioId || !supabaseTx) return []
+    if (typeof usuarioId !== 'string' || usuarioId.length !== 36 || !usuarioId.includes('-')) {
+      return []
+    }
+
     try {
-      const historial = localStorage.getItem(CLAVE_PEDIDOS_LOCAL)
-      if (!historial) return []
-      const lista = JSON.parse(historial)
-      let huboCambios = false
+      const { data: pedidosBD, error } = await supabaseTx
+        .from('pedidos')
+        .select(`
+          id,
+          numero_pedido,
+          usuario_id,
+          correo_contacto,
+          total,
+          subtotal,
+          impuestos,
+          costo_envio,
+          envio_calle_principal,
+          envio_numeracion,
+          envio_ciudad,
+          envio_referencia,
+          fiscal_identificacion,
+          fiscal_razon_social,
+          creado_en,
+          estado_id,
+          estados_pedido ( nombre, orden ),
+          detalles_pedido ( producto_id, nombre_producto, precio_unitario, cantidad, subtotal_linea )
+        `)
+        .eq('usuario_id', usuarioId)
+        .order('creado_en', { ascending: false })
 
-      const actualizada = lista.map(p => {
-        const idActual = p.estadoActual === 'Entregado' ? 4 : (p.estadoActual?.includes('En camino') ? 3 : 2)
-        const idEsperado = this.determinarEstadoSegunTiempo(p.fechaIso, idActual)
-        if (idEsperado > idActual) {
-          huboCambios = true
-          const nombres = { 1: 'Pagado', 2: 'En preparación', 3: 'En camino (Quito)', 4: 'Entregado' }
-          const nuevoNombre = nombres[idEsperado] || p.estadoActual
-          const pasos = (p.pasosSeguimiento || []).map((paso, idx) => ({
-            ...paso,
-            completado: (idx + 1) <= idEsperado,
-            activo: (idx + 1) === idEsperado
-          }))
-          return {
-            ...p,
-            estadoActual: nuevoNombre,
-            estadoId: idEsperado,
-            pasosSeguimiento: pasos
-          }
-        }
-        return p
-      })
-
-      if (huboCambios) {
-        this.guardarHistorialPedidos(actualizada)
+      if (error) {
+        console.warn('Aviso al consultar historial en Supabase TX:', error.message)
+        return []
       }
-      return actualizada
-    } catch (e) {
-      console.warn('Error leyendo historial de pedidos:', e)
+
+      return (pedidosBD || []).map((pedidoBD) => {
+        const ordenEstado = pedidoBD.estados_pedido?.orden || pedidoBD.estado_id || 2
+        const nombres = { 1: 'Pagado', 2: 'En preparación', 3: 'En camino (Quito)', 4: 'Entregado' }
+        const nombreEstado = nombres[ordenEstado] || pedidoBD.estados_pedido?.nombre || 'En preparación'
+
+        return {
+          codigo: pedidoBD.numero_pedido,
+          fecha: new Date(pedidoBD.creado_en).toLocaleDateString('es-EC', { day: '2-digit', month: 'short', year: 'numeric' }),
+          hora: new Date(pedidoBD.creado_en).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }),
+          fechaIso: pedidoBD.creado_en,
+          estadoActual: nombreEstado,
+          estadoId: ordenEstado,
+          cliente: {
+            nombre: pedidoBD.fiscal_razon_social,
+            correo: pedidoBD.correo_contacto || 'cliente@perifericosquito.com'
+          },
+          direccionEnvio: {
+            ciudad: pedidoBD.envio_ciudad || 'Quito, Pichincha',
+            sector: pedidoBD.envio_ciudad || 'Quito',
+            callePrincipal: pedidoBD.envio_calle_principal,
+            numeracion: pedidoBD.envio_numeracion,
+            referencia: pedidoBD.envio_referencia
+          },
+          datosFiscales: {
+            identificacion: pedidoBD.fiscal_identificacion,
+            razonSocial: pedidoBD.fiscal_razon_social
+          },
+          totales: {
+            subtotal: Number(pedidoBD.subtotal),
+            envio: Number(pedidoBD.costo_envio),
+            impuestos: Number(pedidoBD.impuestos),
+            total: Number(pedidoBD.total)
+          },
+          articulos: (pedidoBD.detalles_pedido || []).map((d) => ({
+            id: d.producto_id,
+            nombre: d.nombre_producto,
+            precio: Number(d.precio_unitario),
+            cantidad: d.cantidad,
+            subtotal: Number(d.subtotal_linea)
+          })),
+          pasosSeguimiento: [
+            { nombre: 'Pago Confirmado', completado: ordenEstado >= 1, activo: ordenEstado === 1, fecha: 'Procesado' },
+            { nombre: 'En preparación', completado: ordenEstado >= 2, activo: ordenEstado === 2, fecha: 'Almacén Quito' },
+            { nombre: 'En camino (Quito)', completado: ordenEstado >= 3, activo: ordenEstado === 3, fecha: 'Distribución' },
+            { nombre: 'Entregado', completado: ordenEstado >= 4, activo: ordenEstado === 4, fecha: 'Destino final' }
+          ]
+        }
+      })
+    } catch (err) {
+      console.warn('Error al recuperar historial de pedidos:', err)
       return []
     }
   },
@@ -641,20 +675,25 @@ export const CheckoutModelo = {
   },
 
   /**
-   * Consulta un pedido por su número de orden (HU-15).
+   * Consulta un pedido por su número de orden en Supabase TX (HU-15).
+   * La base de datos es la única fuente de verdad.
+   * Si se especifica usuarioId, verifica que el pedido pertenezca a dicho usuario.
+   * @param {string} codigo
+   * @param {string|null} usuarioId
+   * @returns {Promise<Object|null>}
    */
-  async consultarPedidoPorCodigo(codigo) {
+  async consultarPedidoPorCodigo(codigo, usuarioId = null) {
     if (!codigo) return null
     const codigoLimpio = String(codigo).trim().toUpperCase().replace('#', '')
 
-    // Intentar buscar en Supabase TX primero
     if (supabaseTx) {
       try {
-        const { data: pedidoBD, error } = await supabaseTx
+        let consulta = supabaseTx
           .from('pedidos')
           .select(`
             id,
             numero_pedido,
+            usuario_id,
             correo_contacto,
             total,
             subtotal,
@@ -672,9 +711,19 @@ export const CheckoutModelo = {
             detalles_pedido ( producto_id, nombre_producto, precio_unitario, cantidad, subtotal_linea )
           `)
           .eq('numero_pedido', codigoLimpio)
-          .maybeSingle()
+
+        if (usuarioId && typeof usuarioId === 'string' && usuarioId.length === 36) {
+          consulta = consulta.eq('usuario_id', usuarioId)
+        }
+
+        const { data: pedidoBD, error } = await consulta.maybeSingle()
 
         if (!error && pedidoBD) {
+          // Si se pasó usuarioId, asegurar que el pedido pertenece a ese usuario
+          if (usuarioId && pedidoBD.usuario_id !== usuarioId) {
+            return null
+          }
+
           const ordenEstadoBD = pedidoBD.estados_pedido?.orden || pedidoBD.estado_id || 2
           const ordenEsperado = this.determinarEstadoSegunTiempo(pedidoBD.creado_en, ordenEstadoBD)
 
@@ -731,52 +780,8 @@ export const CheckoutModelo = {
           }
         }
       } catch (err) {
-        console.warn('Consulta en Supabase no disponible, buscando en historial local:', err)
+        console.warn('Consulta en Supabase TX no disponible:', err)
       }
-    }
-
-    // Búsqueda en historial local
-    const historial = this.obtenerHistorialPedidos()
-    const encontrado = historial.find(p => p.codigo?.toUpperCase() === codigoLimpio)
-    if (encontrado) {
-      const ordenActual = encontrado.estadoActual === 'Entregado' ? 4 : (encontrado.estadoActual?.includes('En camino') ? 3 : 2)
-      const ordenEsperado = this.determinarEstadoSegunTiempo(encontrado.fechaIso, ordenActual)
-      if (ordenEsperado > ordenActual) {
-        this.actualizarEstadoPedido(encontrado.codigo, ordenEsperado).catch(() => {})
-        const nombres = { 1: 'Pagado', 2: 'En preparación', 3: 'En camino (Quito)', 4: 'Entregado' }
-        encontrado.estadoActual = nombres[ordenEsperado] || encontrado.estadoActual
-        encontrado.estadoId = ordenEsperado
-        encontrado.pasosSeguimiento = (encontrado.pasosSeguimiento || []).map((paso, idx) => ({
-          ...paso,
-          completado: (idx + 1) <= ordenEsperado,
-          activo: (idx + 1) === ordenEsperado
-        }))
-      }
-      return encontrado
-    }
-
-    // Ver si coincide con el último pedido
-    try {
-      const ultimo = JSON.parse(localStorage.getItem('ultimo_pedido_generado') || '{}')
-      if (ultimo.codigo?.toUpperCase() === codigoLimpio) {
-        const ordenActual = ultimo.estadoActual === 'Entregado' ? 4 : (ultimo.estadoActual?.includes('En camino') ? 3 : 2)
-        const ordenEsperado = this.determinarEstadoSegunTiempo(ultimo.fechaIso, ordenActual)
-        if (ordenEsperado > ordenActual) {
-          this.actualizarEstadoPedido(ultimo.codigo, ordenEsperado).catch(() => {})
-          const nombres = { 1: 'Pagado', 2: 'En preparación', 3: 'En camino (Quito)', 4: 'Entregado' }
-          ultimo.estadoActual = nombres[ordenEsperado] || ultimo.estadoActual
-          ultimo.estadoId = ordenEsperado
-          ultimo.pasosSeguimiento = (ultimo.pasosSeguimiento || []).map((paso, idx) => ({
-            ...paso,
-            completado: (idx + 1) <= ordenEsperado,
-            activo: (idx + 1) === ordenEsperado
-          }))
-          localStorage.setItem('ultimo_pedido_generado', JSON.stringify(ultimo))
-        }
-        return ultimo
-      }
-    } catch {
-      // Ignorar error de parsing
     }
 
     return null

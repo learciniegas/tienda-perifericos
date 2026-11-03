@@ -1,11 +1,98 @@
 /**
  * MODELO: validadorModelo.js
- * Validadores de negocio para el checkout en Ecuador:
- * - Algoritmo de Luhn y formato de tarjeta de crédito/débito.
+ * Validadores de negocio sincronizados con las restricciones de la base de datos (Postgres):
+ * - Validación de nombres de personas y perfiles (sin números, longitud 2-100, chk_perfiles_nombre).
+ * - Validación estricta de correo electrónico (chk_contacto_correo).
+ * - Algoritmo de Luhn y formato de tarjeta de crédito/débito por franquicia (Visa, Mastercard, Amex, Diners).
  * - Validación de cédula de identidad ecuatoriana (módulo 10).
  * - Validación de RUC ecuatoriano (personas naturales y jurídicas).
  * - Validación de fecha de expiración y código de seguridad CVV.
  */
+
+/**
+ * Valida un nombre y apellido conforme al check constraint de Postgres (chk_perfiles_nombre, chk_contacto_nombre).
+ * Regla: longitud 2 a 100 caracteres, sin números. Permite letras con tildes, diéresis, ñ, espacios, puntos y guiones.
+ * @param {string} nombre
+ * @returns {{ esValido: boolean, mensaje: string }}
+ */
+export function validarNombrePersona(nombre) {
+  const limpio = String(nombre || '').trim()
+
+  if (!limpio) {
+    return {
+      esValido: false,
+      mensaje: 'Por favor ingresa tu nombre y apellido completos.'
+    }
+  }
+
+  if (limpio.length < 2) {
+    return {
+      esValido: false,
+      mensaje: 'El nombre debe tener al menos 2 caracteres.'
+    }
+  }
+
+  if (limpio.length > 100) {
+    return {
+      esValido: false,
+      mensaje: 'El nombre no puede superar los 100 caracteres.'
+    }
+  }
+
+  // Comprobar si contiene dígitos numéricos (Restricción de base de datos)
+  if (/\d/.test(limpio)) {
+    return {
+      esValido: false,
+      mensaje: 'El nombre no puede contener números. Ingresa únicamente letras y apellidos reales.'
+    }
+  }
+
+  // Regex idéntico a chk_perfiles_nombre en Supabase Postgres
+  const regexPostgres = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ '.-]*$/
+  if (!regexPostgres.test(limpio)) {
+    return {
+      esValido: false,
+      mensaje: 'El nombre contiene caracteres especiales no válidos. Usa solo letras, espacios, guiones o puntos.'
+    }
+  }
+
+  return { esValido: true, mensaje: 'Nombre válido.' }
+}
+
+/**
+ * Valida un correo electrónico conforme al check constraint de Postgres (chk_contacto_correo).
+ * Regla: máximo 254 caracteres, formato estándar con dominio válido.
+ * @param {string} correo
+ * @returns {{ esValido: boolean, mensaje: string }}
+ */
+export function validarCorreoElectronico(correo) {
+  const limpio = String(correo || '').trim().toLowerCase()
+
+  if (!limpio) {
+    return {
+      esValido: false,
+      mensaje: 'Por favor ingresa tu correo electrónico.'
+    }
+  }
+
+  if (limpio.length > 254) {
+    return {
+      esValido: false,
+      mensaje: 'El correo electrónico no puede exceder los 254 caracteres.'
+    }
+  }
+
+  // Expresión regular idéntica al check constraint chk_contacto_correo en Supabase
+  const regexCorreo = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/
+  if (!regexCorreo.test(limpio)) {
+    return {
+      esValido: false,
+      mensaje: 'Ingresa un formato de correo electrónico válido (ejemplo: usuario@correo.com).'
+    }
+  }
+
+  return { esValido: true, mensaje: 'Correo electrónico válido.' }
+}
 
 /**
  * Valida un número de cédula de identidad ecuatoriana mediante el algoritmo módulo 10.
@@ -213,13 +300,37 @@ export function detectarFranquiciaTarjeta(numeroTarjeta) {
 }
 
 /**
- * Formatea un número de tarjeta con espacios cada 4 dígitos.
+ * Formatea un número de tarjeta con espacios según la franquicia detectada.
+ * - American Express: 15 dígitos (4 - 6 - 5)
+ * - Diners Club: 14 dígitos (4 - 6 - 4)
+ * - Visa, Mastercard y otras: bloques de 4 dígitos (hasta 19 dígitos)
  * @param {string} valor
  * @returns {string}
  */
 export function formatearNumeroTarjeta(valor) {
-  const limpia = String(valor || '').replace(/\D/g, '').slice(0, 19)
-  return limpia.replace(/(\d{4})/g, '$1 ').trim()
+  const limpia = String(valor || '').replace(/\D/g, '')
+  const franquicia = detectarFranquiciaTarjeta(limpia)
+
+  if (franquicia === 'amex') {
+    const acotada = limpia.slice(0, 15)
+    const p1 = acotada.slice(0, 4)
+    const p2 = acotada.slice(4, 10)
+    const p3 = acotada.slice(10, 15)
+    return [p1, p2, p3].filter(Boolean).join(' ')
+  }
+
+  if (franquicia === 'diners') {
+    const acotada = limpia.slice(0, 14)
+    const p1 = acotada.slice(0, 4)
+    const p2 = acotada.slice(4, 10)
+    const p3 = acotada.slice(10, 14)
+    return [p1, p2, p3].filter(Boolean).join(' ')
+  }
+
+  // Visa, Mastercard y genéricas
+  const acotada = limpia.slice(0, 19)
+  const partes = acotada.match(/.{1,4}/g)
+  return partes ? partes.join(' ') : acotada
 }
 
 /**

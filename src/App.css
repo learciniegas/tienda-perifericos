@@ -180,10 +180,11 @@
   color: #4b5563;
 }
 
-/* Input de búsqueda */
+/* Input de búsqueda directo */
 .search-textbox {
   flex: 1;
   border: none;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
   padding: 0 0.875rem;
   font-size: 0.9375rem;
   font-family: inherit;
@@ -3139,6 +3140,84 @@ body {
   margin-top: 0.25rem;
 }
 
+/* ========================================================
+   SECCIÓN DE DESCARGA DE COMPROBANTE DIGITAL (HU-08 / Opción 2)
+   ======================================================== */
+.receipt-digital-download-box {
+  background-color: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.receipt-download-info {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.receipt-download-icon {
+  font-size: 2.25rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.receipt-download-tag {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background-color: #e0f2fe;
+  color: #0369a1;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  display: inline-block;
+  margin-bottom: 0.3rem;
+}
+
+.receipt-download-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text-main);
+  margin: 0;
+}
+
+.receipt-download-desc {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin: 0.25rem 0 0 0;
+  line-height: 1.4;
+}
+
+.btn-download-receipt {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .receipt-digital-download-box {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 1.25rem;
+    gap: 1.25rem;
+  }
+
+  .receipt-download-info {
+    align-items: flex-start;
+  }
+
+  .btn-download-receipt {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+}
+
 .receipt-card-paper {
   background-color: #ffffff;
   border: 1px solid var(--color-border);
@@ -3343,30 +3422,55 @@ body {
 }
 
 /* ========================================================
-   REGLAS PARA IMPRESIÓN (RECIBO LIMPIO)
+   REGLAS PARA IMPRESIÓN (RECIBO LIMPIO EN UNA SOLA PÁGINA)
    ======================================================== */
+@page {
+  margin: 8mm;
+  size: auto;
+}
+
 @media print {
   body {
-    background-color: #ffffff;
+    background-color: #ffffff !important;
+    color: #111827 !important;
   }
 
   .amazon-header,
-  .amazon-footer,
+  header,
+  .site-footer,
+  footer,
   .receipt-actions-row,
   .receipt-success-banner,
+  .receipt-digital-download-box,
+  .no-print,
   .skip-link,
   .live-announcer {
     display: none !important;
   }
 
   .checkout-page-container {
-    padding: 0;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .receipt-container {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   .receipt-card-paper {
-    border: none;
-    box-shadow: none;
-    padding: 0;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+    padding: 1.25rem !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .receipt-table-wrapper {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }
 
@@ -5323,14 +5427,42 @@ body {
   border: 1px solid #86efac !important;
 }
 
-/* Evita desplazamiento horizontal y conserva la lectura en pantallas estrechas. */
+/* Soporte responsivo de navegación y menús en pantallas móviles (Punto 11) */
 @media (max-width: 640px) {
   .header-sub-belt {
-    overflow-x: clip;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .header-sub-belt::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sub-belt-container {
+    justify-content: flex-start;
+    padding: 0 0.75rem;
+    width: 100%;
   }
 
   .sub-belt-links {
-    min-width: 0;
+    min-width: max-content;
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .nav-orders-widget {
+    display: none; /* Accesible desde el menú de usuario y la barra de navegación */
+  }
+
+  .nav-flyout-menu {
+    position: fixed;
+    top: 75px;
+    right: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+    max-width: calc(100vw - 1.5rem);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   }
 
   .catalog-toolbar {

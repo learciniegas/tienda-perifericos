@@ -4,7 +4,7 @@
  * Implementa el patrón MVS (Modelo) abstrayendo el acceso a datos.
  */
 
-import { supabaseCore } from '../config/supabaseClient'
+import { supabaseCore, supabaseTx } from '../config/supabaseClient'
 import {
   PRODUCTOS_PREDETERMINADOS,
   CATEGORIAS_PREDETERMINADAS,
@@ -407,8 +407,44 @@ export async function obtenerResenasProducto(productoId) {
 }
 
 /**
- * Registra una nueva reseña y valoración de producto (Release 3).
- * Persiste en Supabase Core mediante RPC y en almacenamiento local resiliente.
+ * Verifica en la base de datos transaccional (Supabase TX) si el usuario ha adquirido previamente el producto.
+ * La base de datos es la única fuente de verdad (tablas pedidos y detalles_pedido).
+ * @param {number|string} productoId
+ * @param {string} usuarioId
+ * @returns {Promise<boolean>}
+ */
+export async function verificarCompraUsuario(productoId, usuarioId) {
+  if (!productoId || !usuarioId) return false
+  if (!supabaseTx) return false
+
+  if (typeof usuarioId !== 'string' || usuarioId.length !== 36 || !usuarioId.includes('-')) {
+    return false
+  }
+
+  try {
+    const idNum = Number(productoId)
+    const { data, error } = await supabaseTx
+      .from('pedidos')
+      .select('id, detalles_pedido!inner(producto_id)')
+      .eq('usuario_id', usuarioId)
+      .eq('detalles_pedido.producto_id', idNum)
+      .limit(1)
+
+    if (error) {
+      console.warn('Aviso al verificar compra de producto en Supabase TX:', error.message)
+      return false
+    }
+
+    return Array.isArray(data) && data.length > 0
+  } catch (err) {
+    console.warn('Error consultando compra en base de datos:', err)
+    return false
+  }
+}
+
+/**
+ * Registra una nueva reseña y valoración de producto.
+ * Valida que el usuario esté autenticado y haya comprado el producto en Supabase TX.
  */
 export async function guardarResenaProducto({
   productoId,
@@ -421,6 +457,16 @@ export async function guardarResenaProducto({
 }) {
   const idNum = Number(productoId)
   if (!idNum) throw new Error('Identificador de producto inválido.')
+
+  if (!usuarioId || typeof usuarioId !== 'string' || usuarioId.length !== 36) {
+    throw new Error('Debes iniciar sesión con tu cuenta para dejar una reseña.')
+  }
+
+  // Comprobar contra la base de datos (fuente de verdad)
+  const haComprado = await verificarCompraUsuario(idNum, usuarioId)
+  if (!haComprado) {
+    throw new Error('Solo los clientes que hayan comprado este periférico pueden calificarlo y dejar una reseña.')
+  }
 
   const califNum = Math.min(5, Math.max(1, Number(calificacion) || 5))
   const fechaActual = new Date().toISOString()
@@ -436,17 +482,7 @@ export async function guardarResenaProducto({
     creado_en: fechaActual
   }
 
-  // Guardar en almacenamiento local
-  try {
-    const guardadas = JSON.parse(localStorage.getItem(CLAVE_RESENAS_LOCALES) || '{}')
-    const previo = guardadas[idNum] || []
-    guardadas[idNum] = [nuevaResena, ...previo]
-    localStorage.setItem(CLAVE_RESENAS_LOCALES, JSON.stringify(guardadas))
-  } catch (err) {
-    console.warn('Error guardando reseña local:', err)
-  }
-
-  // Sincronizar en Supabase Core mediante RPC o INSERT
+  // Sincronizar en Supabase Core mediante RPC
   try {
     const { data, error } = await supabaseCore.rpc('guardar_resena', {
       p_producto_id: idNum,
@@ -455,14 +491,14 @@ export async function guardarResenaProducto({
       p_nombre_autor: nuevaResena.nombre_autor,
       p_titulo: nuevaResena.titulo,
       p_ciudad: nuevaResena.ciudad,
-      p_usuario_id: (usuarioId && usuarioId.includes('-') && usuarioId.length === 36) ? usuarioId : null
+      p_usuario_id: usuarioId
     })
 
     if (!error && data) {
       nuevaResena.id = data
     }
   } catch (err) {
-    console.warn('No se pudo enviar la reseña a Supabase Core, almacenada en local:', err)
+    console.warn('Aviso al registrar reseña en Supabase Core:', err)
   }
 
   return nuevaResena

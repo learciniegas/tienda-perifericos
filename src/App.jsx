@@ -17,6 +17,7 @@ import { PaginaProductoDetalle } from './vista/paginas/ProductoDetallePage'
 import { PaginaCarrito } from './vista/paginas/CarritoPage'
 import { PaginaCheckout } from './vista/paginas/CheckoutPage'
 import { PaginaLogin } from './vista/paginas/LoginPage'
+import { PaginaRestablecerContrasena } from './vista/paginas/RestablecerContrasenaPage'
 import { PaginaSeguimiento } from './vista/paginas/SeguimientoPage'
 import { PaginaPreguntasFrecuentes } from './vista/paginas/FaqPage'
 import { PaginaContacto } from './vista/paginas/ContactoPage'
@@ -47,6 +48,8 @@ export default function Aplicacion() {
                 <Route path="/carrito" element={<PaginaCarrito />} />
                 <Route path="/checkout" element={<PaginaCheckout />} />
                 <Route path="/login" element={<PaginaLogin />} />
+                <Route path="/registro" element={<PaginaLogin modoInicial="registro" />} />
+                <Route path="/restablecer-contrasena" element={<PaginaRestablecerContrasena />} />
                 <Route path="/seguimiento" element={<PaginaSeguimiento />} />
                 <Route path="/faq" element={<PaginaPreguntasFrecuentes />} />
                 <Route path="/contacto" element={<PaginaContacto />} />

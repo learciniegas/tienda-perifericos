@@ -1,43 +1,77 @@
 /**
  * VISTA: SeguimientoPage.jsx
- * Rastreo de pedidos por N# de Orden con persistencia y consulta en Supabase/local (HU-09, HU-15).
+ * Rastreo de pedidos vinculado exclusivamente a la cuenta del usuario en Supabase TX (Punto 10).
+ * Sin persistencia en localStorage, sin control manual de estados y con verificación de propiedad.
  */
 
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { CheckoutModelo } from '../../modelo/checkoutModelo'
+import { useAutenticacion } from '../../controlador/useAuth'
 import { IconoPeriferico } from '../componentes/PeripheralIcon'
 
-function cargarUltimoPedidoLocal() {
-  try {
-    const guardado = localStorage.getItem('ultimo_pedido_generado')
-    return guardado ? JSON.parse(guardado) : null
-  } catch (err) {
-    console.warn('Error recuperando último pedido:', err)
-    return null
-  }
-}
-
 export function PaginaSeguimiento() {
+  const { usuario } = useAutenticacion()
   const [parametrosUrl] = useSearchParams()
   const codigoUrl = parametrosUrl.get('orden') || ''
 
-  const [pedidoConsultado, setPedidoConsultado] = useState(() => {
-    if (codigoUrl) return null
-    return cargarUltimoPedidoLocal()
-  })
-  const [numeroOrden, setNumeroOrden] = useState(() => {
-    if (codigoUrl) return codigoUrl
-    const ultimo = cargarUltimoPedidoLocal()
-    return ultimo?.codigo || ''
-  })
-  const [cargando, setCargando] = useState(() => Boolean(codigoUrl))
+  const [pedidoConsultado, setPedidoConsultado] = useState(null)
+  const [numeroOrden, setNumeroOrden] = useState(codigoUrl)
+  const [cargando, setCargando] = useState(() => Boolean(usuario?.autenticado && usuario?.id))
   const [error, setError] = useState('')
-  const [actualizandoEstado, setActualizandoEstado] = useState(false)
-  const [notificacionEntrega, setNotificacionEntrega] = useState('')
   const [segundosRestantes, setSegundosRestantes] = useState(0)
 
-  // Temporizador para cambio automático de estado cada 2 minutos (HU-15)
+  // Cargar pedido por URL o el pedido más reciente del usuario autenticado
+  useEffect(() => {
+    let activo = true
+
+    if (!usuario?.autenticado || !usuario?.id) {
+      return
+    }
+
+    if (codigoUrl) {
+      CheckoutModelo.consultarPedidoPorCodigo(codigoUrl, usuario.id)
+        .then((pedido) => {
+          if (!activo) return
+          if (pedido) {
+            setPedidoConsultado(pedido)
+            setNumeroOrden(pedido.codigo)
+            setError('')
+          } else {
+            setError(`No se encontró ningún pedido #${codigoUrl.trim().toUpperCase()} asociado a tu cuenta.`)
+            setPedidoConsultado(null)
+          }
+          setCargando(false)
+        })
+        .catch((err) => {
+          if (!activo) return
+          setError('Error al consultar el pedido: ' + err.message)
+          setPedidoConsultado(null)
+          setCargando(false)
+        })
+    } else {
+      // Cargar el pedido más reciente desde la base de datos Supabase TX
+      CheckoutModelo.obtenerHistorialPedidos(usuario.id)
+        .then((historial) => {
+          if (!activo) return
+          if (historial && historial.length > 0) {
+            setPedidoConsultado(historial[0])
+            setNumeroOrden(historial[0].codigo)
+          }
+          setCargando(false)
+        })
+        .catch(() => {
+          if (!activo) return
+          setCargando(false)
+        })
+    }
+
+    return () => {
+      activo = false
+    }
+  }, [codigoUrl, usuario])
+
+  // Temporizador para actualización visual de fases automáticas cada 2 minutos
   useEffect(() => {
     if (!pedidoConsultado || pedidoConsultado.estadoActual === 'Entregado') {
       return
@@ -47,81 +81,26 @@ export function PaginaSeguimiento() {
       const restantes = CheckoutModelo.obtenerTiempoRestanteSiguienteEstado(pedidoConsultado.fechaIso)
       setSegundosRestantes(restantes)
 
-      // Si los segundos restantes llegan a 0 o se cumple el ciclo, consultar estado actualizado
-      if (restantes <= 0) {
-        const actualizado = await CheckoutModelo.consultarPedidoPorCodigo(pedidoConsultado.codigo)
+      if (restantes <= 0 && usuario?.id) {
+        const actualizado = await CheckoutModelo.consultarPedidoPorCodigo(pedidoConsultado.codigo, usuario.id)
         if (actualizado && actualizado.estadoActual !== pedidoConsultado.estadoActual) {
           setPedidoConsultado(actualizado)
-          if (actualizado.estadoActual === 'Entregado') {
-            setNotificacionEntrega(
-              `✓ ¡Aviso enviado! Se despachó el correo oficial de entrega completada a ${actualizado.cliente?.correo || 'tu correo registrado'}.`
-            )
-          }
         }
       }
     }, 1000)
 
     return () => clearInterval(intervalo)
-  }, [pedidoConsultado])
+  }, [pedidoConsultado, usuario])
 
   const segundosEfectivos = segundosRestantes > 0
     ? segundosRestantes
     : (pedidoConsultado ? CheckoutModelo.obtenerTiempoRestanteSiguienteEstado(pedidoConsultado.fechaIso) : 0)
 
-  const manejarCambioEstado = async (nuevoEstadoId) => {
-    if (!pedidoConsultado) return
-    setActualizandoEstado(true)
-    setNotificacionEntrega('')
-
-    try {
-      const actualizado = await CheckoutModelo.actualizarEstadoPedido(pedidoConsultado.codigo, nuevoEstadoId)
-      if (actualizado) {
-        setPedidoConsultado(actualizado)
-        if (Number(nuevoEstadoId) === 4) {
-          setNotificacionEntrega(`✓ ¡Aviso enviado! Se despachó el correo oficial de entrega completada a ${actualizado.cliente?.correo || 'tu correo registrado'}.`)
-        }
-      }
-    } catch (err) {
-      console.warn('Error al actualizar estado del pedido:', err)
-    } finally {
-      setActualizandoEstado(false)
-    }
-  }
-
-  // Si viene con parámetro ?orden=... en la URL, consultar asíncronamente
-  useEffect(() => {
-    let activo = true
-
-    if (codigoUrl) {
-      CheckoutModelo.consultarPedidoPorCodigo(codigoUrl)
-        .then((pedido) => {
-          if (!activo) return
-          if (pedido) {
-            setPedidoConsultado(pedido)
-            setError('')
-          } else {
-            setError(`No se encontró ningún pedido con el código #${codigoUrl.trim().toUpperCase()}. Verifica el código de tu comprobante.`)
-            setPedidoConsultado(null)
-          }
-          setCargando(false)
-        })
-        .catch((err) => {
-          if (!activo) return
-          setError('Ocurrió un error al consultar el pedido: ' + err.message)
-          setPedidoConsultado(null)
-          setCargando(false)
-        })
-    }
-
-    return () => {
-      activo = false
-    }
-  }, [codigoUrl])
-
+  // Consulta manual mediante el formulario
   const manejarEnvio = async (evento) => {
     evento.preventDefault()
     if (!numeroOrden || !numeroOrden.trim()) {
-      setError('Por favor ingresa un número de pedido válido (ej: ORD-123456).')
+      setError('Por favor ingresa un número de pedido (ej: ORD-123456).')
       return
     }
 
@@ -129,11 +108,11 @@ export function PaginaSeguimiento() {
     setError('')
 
     try {
-      const pedido = await CheckoutModelo.consultarPedidoPorCodigo(numeroOrden)
+      const pedido = await CheckoutModelo.consultarPedidoPorCodigo(numeroOrden, usuario.id)
       if (pedido) {
         setPedidoConsultado(pedido)
       } else {
-        setError(`No se encontró ningún pedido con el código #${numeroOrden.trim().toUpperCase()}. Verifica el código de tu comprobante.`)
+        setError(`No se encontró ningún pedido con el código #${numeroOrden.trim().toUpperCase()} en tu cuenta.`)
         setPedidoConsultado(null)
       }
     } catch (err) {
@@ -144,12 +123,37 @@ export function PaginaSeguimiento() {
     }
   }
 
+  // Pantalla para usuarios no autenticados (Protección de privacidad de pedidos)
+  if (!usuario?.autenticado) {
+    return (
+      <div className="tracking-page-container">
+        <div className="tracking-header-zone">
+          <h1 className="catalog-main-title">Seguimiento de pedidos</h1>
+          <p className="catalog-subtitle">
+            Consulta en tiempo real el estado de despacho y entrega de tus periféricos en Pichincha.
+          </p>
+        </div>
+
+        <div className="empty-cart-card">
+          <IconoPeriferico tipo="truck" size={64} className="empty-cart-icon" />
+          <h2>Inicia sesión para ver tus pedidos</h2>
+          <p>
+            Por seguridad, los pedidos se asocian exclusivamente a la cuenta del comprador en nuestra base de datos.
+          </p>
+          <Link to="/login?redirect=/seguimiento" className="btn-primary mt-3">
+            Iniciar sesión
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="tracking-page-container">
       <div className="tracking-header-zone">
         <h1 className="catalog-main-title">Seguimiento de pedidos</h1>
         <p className="catalog-subtitle">
-          Consulta en tiempo real el estado de despacho y entrega de tus periféricos en Quito y Pichincha.
+          Consulta en tiempo real el estado de despacho y entrega de tus compras en Quito y Pichincha.
         </p>
       </div>
 
@@ -162,7 +166,7 @@ export function PaginaSeguimiento() {
             <input
               type="text"
               id="input-order-code"
-              placeholder="Ej: ORD-948123 o 1001"
+              placeholder="Ej: ORD-948123"
               value={numeroOrden}
               onChange={(e) => setNumeroOrden(e.target.value)}
               className="tracking-input font-mono"
@@ -179,35 +183,49 @@ export function PaginaSeguimiento() {
         </form>
 
         {cargando && (
-          <div className="loading-state" role="status">
-            <div className="spinner" aria-hidden="true" />
-            <p>Consultando base de datos de envíos en Pichincha...</p>
+          <div className="tracking-loading-state" role="status">
+            <span className="spinner-dot" aria-hidden="true" />
+            <p>Consultando base de datos transaccional...</p>
           </div>
         )}
 
-        {pedidoConsultado && !cargando && (
-          <div className="tracking-result-panel" role="region" aria-label="Detalle del pedido">
-            <div className="order-summary-badge">
+        {!cargando && !pedidoConsultado && !error && (
+          <div className="tracking-empty-callout">
+            <IconoPeriferico tipo="package" size={48} className="tracking-empty-icon" />
+            <h3>Aún no has registrado ningún pedido</h3>
+            <p>Cuando realices tu compra en Pichincha, aquí podrás seguir el estado de tu despacho en tiempo real.</p>
+            <Link to="/catalogo" className="btn-primary mt-2">
+              Explorar Catálogo
+            </Link>
+          </div>
+        )}
+
+        {!cargando && pedidoConsultado && (
+          <div className="order-result-card" aria-live="polite">
+            
+            {/* Cabecera del pedido */}
+            <div className="order-result-header">
               <div>
-                <h2>Pedido #{pedidoConsultado.codigo}</h2>
-                <p>
-                  Fecha: {pedidoConsultado.fecha} {pedidoConsultado.hora ? `• ${pedidoConsultado.hora}` : ''} • Destino: {pedidoConsultado.direccionEnvio?.sector || pedidoConsultado.canton || 'Quito, Pichincha'}
+                <span className="tracking-code-pill">ORDEN #{pedidoConsultado.codigo}</span>
+                <h2 className="order-result-title">Envío a {pedidoConsultado.direccionEnvio?.ciudad || 'Pichincha'}</h2>
+                <p className="order-result-date">
+                  Registrado el {pedidoConsultado.fecha} a las {pedidoConsultado.hora}
                 </p>
                 {pedidoConsultado.estadoActual !== 'Entregado' && segundosEfectivos > 0 ? (
-                  <div className="tracking-timer-pill" role="status" aria-live="polite">
-                    <span className="timer-pulse-dot" aria-hidden="true" />
+                  <div className="tracking-timer-pill" role="status">
+                    <span className="timer-icon" aria-hidden="true">⏱️</span>
                     <span>
                       Próxima fase en:{' '}
                       <strong>
                         {Math.floor(segundosEfectivos / 60)}:
                         {String(segundosEfectivos % 60).padStart(2, '0')}
                       </strong>{' '}
-                      min (Cambio cada 2 minutos)
+                      min (Fases logísticas de 2 minutos)
                     </span>
                   </div>
                 ) : pedidoConsultado.estadoActual === 'Entregado' ? (
                   <div className="tracking-timer-pill delivered-pill" role="status">
-                    <span>✓ Pedido entregado en destino • Correo enviado</span>
+                    <span>✓ Pedido entregado en domicilio</span>
                   </div>
                 ) : null}
               </div>
@@ -216,9 +234,9 @@ export function PaginaSeguimiento() {
               </span>
             </div>
 
-            {/* Línea de tiempo accesible */}
+            {/* Línea de tiempo de progreso */}
             <ol className="progress-stepper" aria-label="Progreso del envío">
-              {(pedidoConsultado.pasosSeguimiento || pedidoConsultado.pasos || []).map((paso, indice) => (
+              {(pedidoConsultado.pasosSeguimiento || []).map((paso, indice) => (
                 <li
                   key={indice}
                   className={`step-item ${paso.completado ? 'is-completed' : ''} ${paso.activo ? 'is-active' : ''}`}
@@ -234,7 +252,7 @@ export function PaginaSeguimiento() {
               ))}
             </ol>
 
-            {/* Artículos de la orden con opción de valoración (Release 3) */}
+            {/* Artículos de la orden con opción de reseñar si ya fue entregado */}
             <div className="order-items-preview">
               <h3>Artículos en despacho</h3>
               <ul className="order-tracking-items-list">
@@ -260,56 +278,6 @@ export function PaginaSeguimiento() {
                 <div className="order-total-callout">
                   <span>Total de la orden:</span>
                   <strong>${Number(pedidoConsultado.totales.total).toFixed(2)}</strong>
-                </div>
-              )}
-            </div>
-
-            {/* Control logístico de despacho y entrega */}
-            <div className="status-update-control-card" role="region" aria-label="Fase de despacho y entrega">
-              <div className="status-control-header">
-                <span className="status-control-tag">LOGÍSTICA EN PICHINCHA</span>
-                <h3 className="status-control-title">Avanzar fase de despacho</h3>
-                <p className="status-control-desc">
-                  Actualiza el estado de entrega del paquete. Al llegar al estado <strong>Entregado</strong>, el sistema despacha automáticamente el correo de confirmación final.
-                </p>
-              </div>
-
-              <div className="status-control-buttons">
-                <button
-                  type="button"
-                  className={`btn-step-status ${pedidoConsultado.estadoActual === 'En preparación' ? 'status-btn-active' : ''}`}
-                  disabled={actualizandoEstado || pedidoConsultado.estadoActual === 'En preparación'}
-                  onClick={() => manejarCambioEstado(2)}
-                  aria-label="Fijar estado en preparación"
-                >
-                  1. En preparación
-                </button>
-
-                <button
-                  type="button"
-                  className={`btn-step-status ${pedidoConsultado.estadoActual.includes('En camino') ? 'status-btn-active' : ''}`}
-                  disabled={actualizandoEstado || pedidoConsultado.estadoActual.includes('En camino')}
-                  onClick={() => manejarCambioEstado(3)}
-                  aria-label="Fijar estado en camino en Quito"
-                >
-                  2. En camino (Quito)
-                </button>
-
-                <button
-                  type="button"
-                  className={`btn-step-status btn-status-delivered ${pedidoConsultado.estadoActual === 'Entregado' ? 'status-btn-active-delivered' : ''}`}
-                  disabled={actualizandoEstado || pedidoConsultado.estadoActual === 'Entregado'}
-                  onClick={() => manejarCambioEstado(4)}
-                  aria-label="Marcar como Entregado y despachar notificación de entrega"
-                >
-                  3. Marcar como Entregado
-                </button>
-              </div>
-
-              {notificacionEntrega && (
-                <div className="auth-alert auth-alert-success mt-3" role="status" aria-live="polite">
-                  <span className="alert-icon" aria-hidden="true">✓</span>
-                  <p>{notificacionEntrega}</p>
                 </div>
               )}
             </div>
