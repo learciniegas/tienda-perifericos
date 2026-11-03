@@ -67,9 +67,6 @@ export function TarjetaProducto({ producto }) {
           <p className="price-comparison">
             Antes ${precioAnterior}, ahora ${precioActual}, {descuento}% menos
           </p>
-          <span className="pichincha-stock-tag">
-            ✓ Stock inmediato en Pichincha
-          </span>
         </div>
 
         {/* Acciones de compra (HU-04) */}

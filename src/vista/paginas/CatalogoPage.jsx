@@ -30,7 +30,6 @@ export function PaginaCatalogo() {
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null)
   const [precioDesde, setPrecioDesde] = useState('')
   const [precioHasta, setPrecioHasta] = useState('')
-  const [soloEnStock, setSoloEnStock] = useState(false)
   const [orden, setOrden] = useState('relevancia')
 
   // Bandera para evitar disparar debounce en el primer render
@@ -98,13 +97,6 @@ export function PaginaCatalogo() {
     actualizarFiltros({ categoria_id: idCategoria })
   }
 
-  // Aplicación inmediata al cambiar checkbox de stock
-  const alternarFiltroStock = (evento) => {
-    const nuevoStock = evento.target.checked
-    setSoloEnStock(nuevoStock)
-    actualizarFiltros({ solo_stock: nuevoStock })
-  }
-
   // Aplicación inmediata al cambiar orden
   const cambiarOrden = (evento) => {
     const nuevoOrden = evento.target.value
@@ -117,7 +109,6 @@ export function PaginaCatalogo() {
     setCategoriaSeleccionada(null)
     setPrecioDesde('')
     setPrecioHasta('')
-    setSoloEnStock(false)
     setOrden('relevancia')
     establecerParametrosBusqueda({})
     resetearFiltros()
@@ -130,7 +121,7 @@ export function PaginaCatalogo() {
       <div className="catalog-header-zone">
         <h1 className="catalog-main-title">Catálogo de periféricos</h1>
         <p className="catalog-subtitle">
-          Encuentra teclados, ratones, auriculares y accesorios con entrega directa en Pichincha.
+          Encuentra teclados, ratones, auriculares y accesorios para tu setup.
         </p>
       </div>
 
@@ -142,7 +133,7 @@ export function PaginaCatalogo() {
           <div className="filters-form">
             <div className="filters-header-row">
               <h2 id="filtros-heading" className="filters-title">Filtrar productos</h2>
-              {(categoriaIdEfectiva !== null || precioDesde || precioHasta || soloEnStock || orden !== 'relevancia') && (
+              {(categoriaIdEfectiva !== null || categoriaUrl || precioDesde || precioHasta || orden !== 'relevancia' || terminoBusqueda) && (
                 <button
                   type="button"
                   onClick={limpiarFiltros}
@@ -226,34 +217,11 @@ export function PaginaCatalogo() {
               </div>
             </fieldset>
 
-            {/* Solo en stock (Filtrado automático) */}
-            <div className="filter-checkbox-row">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={soloEnStock}
-                  onChange={alternarFiltroStock}
-                  className="custom-checkbox"
-                />
-                <span>Solo en stock</span>
-              </label>
-            </div>
-
-            {/* Botón único de limpiar filtros */}
-            <div className="filter-actions">
-              <button
-                type="button"
-                onClick={limpiarFiltros}
-                className="btn-secondary btn-clear-filters"
-              >
-                Limpiar filtros
-              </button>
-            </div>
           </div>
         </aside>
 
         {/* Zona principal de productos */}
-        <main className="catalog-main-content" aria-label="Resultados de periféricos">
+        <section className="catalog-main-content" aria-label="Resultados de periféricos">
           
           {/* Barra de control superior: Contador y Orden */}
           <div className="catalog-toolbar">
@@ -277,7 +245,7 @@ export function PaginaCatalogo() {
             </div>
           </div>
 
-          <h2 className="season-subtitle">Disponibles para entrega en Pichincha</h2>
+          <h2 className="season-subtitle">Productos disponibles</h2>
 
           {/* Listado de tarjetas de productos */}
           {cargando ? (
@@ -293,10 +261,7 @@ export function PaginaCatalogo() {
             <div className="empty-results-box" role="status">
               <IconoPeriferico tipo="search" size={48} className="empty-icon" />
               <h3>No se encontraron periféricos</h3>
-              <p>Intenta ajustar o limpiar los filtros seleccionados para ver más resultados.</p>
-              <button type="button" onClick={limpiarFiltros} className="btn-primary">
-                Restablecer todos los filtros
-              </button>
+              <p>Prueba con otros términos o criterios de búsqueda.</p>
             </div>
           ) : (
             <div className="products-grid">
@@ -306,7 +271,7 @@ export function PaginaCatalogo() {
             </div>
           )}
 
-        </main>
+        </section>
 
       </div>
     </div>

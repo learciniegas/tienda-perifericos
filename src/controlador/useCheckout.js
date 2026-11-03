@@ -276,7 +276,7 @@ export function useCheckout() {
     if (!numeroLimpio) {
       erroresValidacionPago.numero = 'Ingresa el número de tarjeta.'
     } else if (!validarAlgoritmoLuhn(numeroLimpio)) {
-      erroresValidacionPago.numero = 'El número de tarjeta no es válido (falla en el algoritmo de Luhn).'
+      erroresValidacionPago.numero = 'El número de tarjeta no es válido.'
     }
 
     const validacionExp = validarFechaExpiracion(datosTarjeta.expiracion)

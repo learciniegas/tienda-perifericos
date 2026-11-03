@@ -18,7 +18,16 @@ export function Encabezado() {
   const [categoriaFiltro, setCategoriaFiltro] = useState('')
   const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false)
   const referenciaMenuUsuario = useRef(null)
+  const referenciaBotonUsuario = useRef(null)
   const navigate = useNavigate()
+
+  const cerrarMenuConEscape = (evento) => {
+    if (evento.key === 'Escape' && menuUsuarioAbierto) {
+      evento.preventDefault()
+      setMenuUsuarioAbierto(false)
+      referenciaBotonUsuario.current?.focus()
+    }
+  }
 
   // Cerrar menú de usuario al hacer clic fuera
   useEffect(() => {
@@ -116,13 +125,17 @@ export function Encabezado() {
           </form>
 
           {/* Widget de Usuario y Cuentas */}
-          <div className="nav-user-widget-wrapper" ref={referenciaMenuUsuario}>
+          <div
+            className="nav-user-widget-wrapper"
+            ref={referenciaMenuUsuario}
+            onKeyDown={cerrarMenuConEscape}
+          >
             <button
               type="button"
               className="nav-two-line-widget"
+              ref={referenciaBotonUsuario}
               onClick={() => setMenuUsuarioAbierto(prev => !prev)}
               aria-expanded={menuUsuarioAbierto}
-              aria-haspopup="true"
               aria-label={usuario.autenticado ? `Cuenta de ${usuario.nombre}. Opciones de usuario` : 'Identifícate o crea tu cuenta'}
             >
               <span className="nav-line-1">
@@ -134,7 +147,7 @@ export function Encabezado() {
             </button>
 
             {menuUsuarioAbierto && (
-              <div className="nav-flyout-menu user-flyout" role="menu">
+              <div className="nav-flyout-menu user-flyout">
                 <div className="flyout-header">
                   {usuario.autenticado ? (
                     <>
@@ -297,12 +310,6 @@ export function Encabezado() {
               </NavLink>
             </li>
           </ul>
-
-          {/* Destacado de cobertura en Pichincha */}
-          <div className="sub-belt-promo">
-            <span className="promo-badge">PICHINCHA</span>
-            <span className="promo-text">Envíos directos en 24 a 48 horas</span>
-          </div>
 
         </div>
       </nav>

@@ -425,7 +425,7 @@
 .sub-belt-container {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 1rem;
   min-height: 42px;
 }
@@ -458,8 +458,10 @@
 }
 
 .sub-belt-links {
+  flex: 1;
   display: flex;
   align-items: center;
+  justify-content: center;
   list-style: none;
   gap: 0.25rem;
   overflow-x: auto;
@@ -500,30 +502,6 @@
 .sub-link.link-deals {
   color: #fde047;
   font-weight: 700;
-}
-
-.sub-belt-promo {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0 0.5rem;
-  white-space: nowrap;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: #ffffff;
-}
-
-.promo-badge {
-  background-color: #dc2626;
-  color: #ffffff;
-  font-size: 0.6875rem;
-  font-weight: 800;
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-}
-
-.promo-text {
-  color: #f3e8ff;
 }
 
 /* ========================================================
@@ -1303,32 +1281,6 @@
   color: var(--color-text-main);
 }
 
-.filter-checkbox-row {
-  margin-bottom: 1.5rem;
-}
-
-.filter-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
-}
-
-.btn-apply-filters {
-  width: 100%;
-  background-color: var(--color-primary);
-  color: #ffffff;
-  font-weight: 600;
-  min-height: 42px;
-}
-
-.btn-clear-filters {
-  width: 100%;
-  background-color: #ffffff;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-main);
-  min-height: 42px;
-}
-
 /* Toolbar superior del catálogo */
 .catalog-toolbar {
   display: flex;
@@ -1385,14 +1337,6 @@
 
 .empty-icon {
   color: #94a3b8;
-}
-
-.pichincha-stock-tag {
-  display: inline-block;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-success);
-  margin-top: 0.35rem;
 }
 
 .pichincha-user-zone {
@@ -1740,14 +1684,6 @@
   margin-bottom: 1rem;
 }
 
-.summary-trust-notice {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
-}
-
 /* ========================================================
    SEGUIMIENTO DE PEDIDOS (TRACKING PAGE)
    ======================================================== */
@@ -1918,29 +1854,6 @@
   text-decoration: underline;
 }
 
-.footer-desc {
-  font-size: 0.875rem;
-  color: #9ca3af;
-  line-height: 1.5;
-  margin-bottom: 1rem;
-}
-
-.footer-badge-box {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.footer-pill {
-  background-color: #1f2937;
-  color: #e5e7eb;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.25rem 0.625rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid #374151;
-}
-
 .footer-bottom {
   padding: 1.5rem 0;
 }
@@ -1986,10 +1899,6 @@
   }
 
   .nav-delivery-widget {
-    display: none;
-  }
-
-  .sub-belt-promo {
     display: none;
   }
 
@@ -2271,12 +2180,6 @@ body {
 
 .price-main {
   color: #32145b;
-}
-
-.pichincha-stock-tag {
-  padding: 0.25rem 0.55rem;
-  border-radius: 999px;
-  background: #eef8f0;
 }
 
 .catalog-header-zone,
@@ -3834,28 +3737,12 @@ body {
   color: var(--color-text-main);
 }
 
-.buybox-shipping-badge {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--color-primary);
-  background-color: var(--color-primary-light);
-  padding: 0.2rem 0.5rem;
-  border-radius: var(--radius-sm);
-}
-
 .buybox-delivery-info {
   font-size: 0.875rem;
   line-height: 1.5;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-}
-
-.stock-in-pichincha {
-  display: block;
-  font-size: 0.9375rem;
-  font-weight: 700;
-  color: var(--color-success);
 }
 
 .buybox-qty-picker {
@@ -4549,63 +4436,6 @@ body {
 .security-desc {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
-}
-
-/* ========================================================
-   ESTILOS DE NOTIFICACIÓN DE ESTADO POR CORREO (RELEASE 2)
-   ======================================================== */
-.order-email-notification-card {
-  background-color: #f8fafc;
-  border: 1px solid #cbd5e1;
-  border-radius: var(--radius-md);
-  padding: 1.25rem;
-  margin-top: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.email-notif-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  font-size: 0.875rem;
-  color: var(--color-text-main);
-}
-
-.email-icon {
-  font-size: 1.5rem;
-}
-
-.email-preview-box {
-  background-color: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-left: 4px solid var(--color-primary);
-  border-radius: var(--radius-sm);
-  padding: 1rem;
-  font-size: 0.875rem;
-}
-
-.email-preview-tag {
-  display: inline-block;
-  font-size: 0.6875rem;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  background-color: var(--color-primary-light);
-  color: var(--color-primary);
-  padding: 0.15rem 0.5rem;
-  border-radius: var(--radius-sm);
-  margin-bottom: 0.5rem;
-}
-
-.email-preview-text {
-  line-height: 1.5;
-  color: var(--color-text-main);
-}
-
-.email-status-highlight {
-  font-weight: 700;
-  color: var(--color-primary);
 }
 
 .flyout-login-highlight {

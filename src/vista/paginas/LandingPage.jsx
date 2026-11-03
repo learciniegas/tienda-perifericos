@@ -57,7 +57,7 @@ export function PaginaInicio() {
               Catálogo de periféricos
             </h2>
             <p className="catalog-subtitle">
-              Modelos disponibles para entrega inmediata en la provincia de Pichincha.
+              Explora nuestra selección de periféricos para gaming y trabajo.
             </p>
           </div>
 
@@ -96,7 +96,7 @@ export function PaginaInicio() {
                 Hasta un 25% de descuento en periféricos seleccionados
               </h2>
               <p className="deal-text">
-                Marcas líderes: Logitech, Corsair, Razer y Redragon con entrega prioritaria en Pichincha.
+                Marcas líderes: Logitech, Corsair, Razer y Redragon.
               </p>
               <Link to="/catalogo" className="btn-primary deal-cta">
                 Ver periféricos en oferta
@@ -171,7 +171,7 @@ export function PaginaInicio() {
               Preguntas Frecuentes
             </h2>
             <p className="catalog-subtitle">
-              Información sobre compras, envíos en Pichincha y garantías de hardware.
+              Información sobre compras, productos y garantías de hardware.
             </p>
           </div>
 

@@ -1,7 +1,6 @@
 /**
  * VISTA: pie de página
- * Pie de página accesible y estructurado estilo tienda.
- * Enfoque exclusivo en la provincia de Pichincha.
+ * Pie de página estructurado estilo tienda.
  */
 
 import { Link } from 'react-router-dom'
@@ -31,15 +30,12 @@ export function PieDePagina() {
           <div className="footer-col">
             <h2 className="footer-col-title">Conócenos</h2>
             <ul className="footer-links">
-              <li><Link to="/">Sobre PERIFÉRICOS</Link></li>
-              <li><Link to="/faq">Declaración de Accesibilidad</Link></li>
               <li><Link to="/catalogo">Catálogo de Hardware</Link></li>
-              <li><a href="https://github.com" target="_blank" rel="noopener noreferrer">Repositorio del Proyecto</a></li>
             </ul>
           </div>
 
           <div className="footer-col">
-            <h2 className="footer-col-title">Departamentos</h2>
+            <h2 className="footer-col-title">Categorías</h2>
             <ul className="footer-links">
               <li><Link to="/catalogo?cat=teclados">Teclados Mecánicos</Link></li>
               <li><Link to="/catalogo?cat=ratones">Ratones Gamer & Ergonómicos</Link></li>
@@ -61,17 +57,6 @@ export function PieDePagina() {
             </ul>
           </div>
 
-          <div className="footer-col">
-            <h2 className="footer-col-title">Cobertura en Pichincha</h2>
-            <p className="footer-desc">
-              Comercio electrónico B2C transaccional con envíos directos a Quito, Rumiñahui, Mejía, Cayambe y cantones de Pichincha con respaldo de 12 meses de garantía.
-            </p>
-            <div className="footer-badge-box">
-              <span className="footer-pill">Envíos a Pichincha</span>
-              <span className="footer-pill">Accesibilidad AA / AAA</span>
-            </div>
-          </div>
-
         </div>
       </div>
 
@@ -83,7 +68,7 @@ export function PieDePagina() {
             <span className="footer-brand-name">PERIFÉRICOS</span>
           </div>
           <p className="footer-copy">
-            &copy; {new Date().getFullYear()} PERIFÉRICOS • Envíos en Pichincha, Ecuador. Todos los derechos reservados.
+            &copy; {new Date().getFullYear()} PERIFÉRICOS • Tecnología para gaming y trabajo. Todos los derechos reservados.
           </p>
         </div>
       </div>

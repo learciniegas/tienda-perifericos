@@ -20,7 +20,7 @@ export function HeroBanner() {
         </h1>
 
         <p className="hero-subtitle">
-          Teclados mecánicos, ratones de ultra-precisión y sonido inmersivo. Envíos directos a Quito y cantones de Pichincha con garantía de 12 meses.
+          Teclados mecánicos, ratones de ultra-precisión y sonido inmersivo para tu setup, con garantía de 12 meses.
         </p>
 
         <div className="hero-ctas">
@@ -33,10 +33,6 @@ export function HeroBanner() {
         </div>
 
         <ul className="hero-features-list" aria-label="Beneficios de compra">
-          <li>
-            <IconoPeriferico tipo="truck" size={18} />
-            <span>Envíos rápidos a Pichincha</span>
-          </li>
           <li>
             <IconoPeriferico tipo="check" size={18} />
             <span>Stock verificado</span>

@@ -254,6 +254,7 @@ export function PaginaProductoDetalle() {
           {/* Calificación y reseñas */}
           <div
             className="detail-rating-row"
+            role="group"
             aria-label={`Calificación ${resenasData.promedio} de 5 estrellas basado en ${resenasData.total} opiniones verificadas`}
           >
             <div className="stars-group" aria-hidden="true">
@@ -280,7 +281,7 @@ export function PaginaProductoDetalle() {
               <span className="detail-discount-tag">-{producto.descuento_porcentaje || 20}%</span>
               <span className="detail-savings-text">Ahorras: ${ahorro}</span>
             </div>
-            <p className="detail-vat-legend">Precio incluye 15% de IVA. Facturación electrónica oficial.</p>
+            <p className="detail-vat-legend">Precio incluye 15% de IVA.</p>
           </div>
 
           <hr className="detail-divider" />
@@ -314,27 +315,19 @@ export function PaginaProductoDetalle() {
 
         </div>
 
-        {/* Columna 3: Caja de Compra y Despacho en Pichincha */}
+        {/* Columna 3: Caja de compra */}
         <aside className="detail-buybox-column" aria-labelledby="heading-buybox">
           <div className="buybox-card">
             <h2 id="heading-buybox" className="sr-only">Comprar este periférico</h2>
             
             <div className="buybox-price-header">
               <span className="buybox-price">${precioNum.toFixed(2)}</span>
-              <span className="buybox-shipping-badge">Envío en Pichincha</span>
             </div>
 
             <div className="buybox-delivery-info">
               <p className="delivery-location">
-                📍 Entrega en: <strong>Quito y cantones de Pichincha</strong>
+                📍 Entrega en Quito y valles: <strong>24 a 48 horas hábiles</strong>
               </p>
-              <p className="delivery-timing">
-                Entrega estimada: <strong>24 a 48 horas hábiles</strong>
-              </p>
-            </div>
-
-            <div className="buybox-stock-status">
-              <span className="stock-in-pichincha">✓ En inventario Quito (Disponible)</span>
             </div>
 
             {/* Selector de Cantidad */}
@@ -389,15 +382,7 @@ export function PaginaProductoDetalle() {
             <div className="buybox-perks-list">
               <div className="perk-item">
                 <span className="perk-icon" aria-hidden="true">🛡️</span>
-                <span>Garantía de 12 meses directa con matriz en Quito</span>
-              </div>
-              <div className="perk-item">
-                <span className="perk-icon" aria-hidden="true">🚚</span>
-                <span>Envíos seguros asegurados contra siniestro</span>
-              </div>
-              <div className="perk-item">
-                <span className="perk-icon" aria-hidden="true">💳</span>
-                <span>Pagos con tarjeta validados por Algoritmo de Luhn</span>
+                <span>Garantía oficial de 12 meses</span>
               </div>
             </div>
 
@@ -415,7 +400,7 @@ export function PaginaProductoDetalle() {
             Opiniones y valoraciones de compradores
           </h2>
           <p className="reviews-main-desc">
-            Opiniones de clientes verificados con entregas en Quito y cantones de Pichincha.
+            Opiniones de compradores verificados.
           </p>
         </div>
 
@@ -446,7 +431,7 @@ export function PaginaProductoDetalle() {
             </div>
 
             {/* Barras de distribución de estrellas */}
-            <div className="rating-bars-list" aria-label="Distribución de estrellas de valoración">
+            <div className="rating-bars-list" role="group" aria-label="Distribución de estrellas de valoración">
               {[5, 4, 3, 2, 1].map((estrellas) => {
                 const porcentaje = resenasData.porcentajes[estrellas] || 0
                 const cantidadEstrellas = resenasData.distribucion[estrellas] || 0
@@ -648,6 +633,7 @@ export function PaginaProductoDetalle() {
                         <div className="review-rating-line">
                           <div
                             className="stars-group"
+                            role="img"
                             aria-label={`Calificación: ${resena.calificacion} de 5 estrellas`}
                           >
                             {'★'.repeat(resena.calificacion) + '☆'.repeat(5 - resena.calificacion)}

@@ -1,7 +1,7 @@
 /**
  * VISTA: FaqPage.jsx
  * Página de Preguntas Frecuentes (FAQ) y Centro de Soporte (HU-16).
- * Acordeón accesible por teclado enfocado en cobertura y envíos para la provincia de Pichincha.
+ * Acordeón informativo enfocado en cobertura y envíos para la provincia de Pichincha.
  */
 
 import { useState } from 'react'
@@ -33,11 +33,6 @@ const PREGUNTAS_FRECUENTES = [
     id: 5,
     pregunta: '¿Cómo solicito mi factura electrónica con datos fiscales?',
     respuesta: 'Durante el paso de confirmación de tu pedido podrás ingresar tu Razón Social, Cédula o RUC para que nuestro sistema emita el comprobante correspondiente.'
-  },
-  {
-    id: 6,
-    pregunta: '¿Cómo se garantiza la accesibilidad en este sitio?',
-    respuesta: 'Toda la interfaz cumple con altos estándares de accesibilidad Nivel AA y AAA: contraste de color superior a 7:1 en textos, navegación 100% operable por teclado, focos visibles de alto contraste y compatibilidad con lectores de pantalla.'
   }
 ]
 
@@ -56,7 +51,7 @@ export function PaginaPreguntasFrecuentes() {
       <div className="faq-header-zone">
         <h1 className="catalog-main-title">Preguntas Frecuentes (FAQ)</h1>
         <p className="catalog-subtitle">
-          Información sobre pedidos, cobertura en Pichincha, garantías y accesibilidad.
+          Información sobre pedidos, cobertura en Pichincha y garantías.
         </p>
       </div>
 

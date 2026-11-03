@@ -1,8 +1,7 @@
 /**
  * VISTA: CheckoutPage.jsx
  * Flujo de Checkout transaccional para la primera release (HU-05, HU-07, HU-08).
- * Diseñado con altos estándares de accesibilidad, diseño profesional estilo tienda
- * y pasarela de pago con validación en el cliente mediante Algoritmo de Luhn.
+ * Diseñado con experiencia de compra profesional y validación de pago en el cliente.
  */
 
 import { useState, useEffect } from 'react'
@@ -152,7 +151,7 @@ export function PaginaCheckout() {
             <div className="receipt-bottom-grid">
               <div className="receipt-payment-summary">
                 <h2 className="receipt-section-heading">Método de Pago</h2>
-                <p><strong>Modalidad:</strong> Tarjeta de crédito / débito (Algoritmo de Luhn)</p>
+                <p><strong>Modalidad:</strong> Tarjeta de crédito / débito</p>
                 <p><strong>Tarjeta:</strong> {ordenConfirmada.marcaTarjeta.toUpperCase()} terminada en <strong>**** {ordenConfirmada.ultimosDigitosTarjeta}</strong></p>
                 <p><strong>Ref. Transacción:</strong> <code>{ordenConfirmada.referenciaPago}</code></p>
               </div>
@@ -653,7 +652,7 @@ export function PaginaCheckout() {
               <span className="step-number-badge" aria-hidden="true">3</span>
               <div>
                 <h2 id="heading-payment" className="section-title">Método de Pago con Tarjeta</h2>
-                <p className="section-desc">Validación segura en el navegador mediante Algoritmo de Luhn.</p>
+                <p className="section-desc">Verifica los datos de tu tarjeta antes de continuar.</p>
               </div>
             </div>
 
@@ -765,7 +764,7 @@ export function PaginaCheckout() {
             <div className="payment-security-notice">
               <span className="lock-icon" aria-hidden="true">🛡️</span>
               <span>
-                <strong>Privacidad garantizada:</strong> Estos datos se validan únicamente en tu navegador con el Algoritmo de Luhn y nunca son transmitidos ni almacenados en servidores externos.
+                <strong>Privacidad garantizada:</strong> Los datos de tu tarjeta se validan antes de confirmar el pago.
               </span>
             </div>
           </section>

@@ -32,7 +32,7 @@ export function PaginaCarrito() {
       <div className="cart-header-zone">
         <h1 className="catalog-main-title">Carrito de compras</h1>
         <p className="catalog-subtitle">
-          Revisa y selecciona los periféricos que deseas comprar con entrega en la provincia de Pichincha.
+          Revisa y selecciona los periféricos que deseas comprar.
         </p>
       </div>
 
@@ -72,7 +72,8 @@ export function PaginaCarrito() {
             </div>
 
             <div className="cart-table-header" aria-hidden="true">
-              <span>Selección / Producto</span>
+              <span />
+              <span>Producto</span>
               <span>Precio unitario</span>
               <span>Cantidad</span>
               <span>Subtotal</span>
@@ -206,7 +207,7 @@ export function PaginaCarrito() {
                   <dd>${totales.subtotal.toFixed(2)}</dd>
                 </div>
                 <div className="summary-row">
-                  <dt>Envío en Quito (Pichincha)</dt>
+                  <dt>Envío</dt>
                   <dd>
                     {totales.subtotal === 0 ? (
                       '$0.00'
@@ -230,7 +231,7 @@ export function PaginaCarrito() {
 
               {totales.subtotal > 0 && totales.subtotal < 50 && (
                 <p className="shipping-hint-text">
-                  💡 Agrega <strong>${(50 - totales.subtotal).toFixed(2)}</strong> más para recibir <strong>Envío Gratis</strong> en Quito.
+                  💡 Agrega <strong>${(50 - totales.subtotal).toFixed(2)}</strong> más para recibir <strong>envío gratis</strong>.
                 </p>
               )}
 
@@ -256,10 +257,6 @@ export function PaginaCarrito() {
                   : 'Selecciona productos para comprar'}
               </button>
 
-              <div className="summary-trust-notice">
-                <IconoPeriferico tipo="truck" size={18} />
-                <span>Envíos rápidos con cobertura exclusiva en Pichincha.</span>
-              </div>
             </div>
           </aside>
 

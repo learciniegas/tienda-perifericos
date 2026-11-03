@@ -28,16 +28,6 @@ export function BeneficiosCompra() {
             <p>Soporte oficial y reemplazo directo contra defectos de fábrica.</p>
           </div>
         </div>
-
-        <div className="trust-item">
-          <div className="trust-icon-wrapper" aria-hidden="true">
-            <IconoPeriferico tipo="check" size={32} />
-          </div>
-          <div className="trust-text">
-            <h3>Accesibilidad Universal</h3>
-            <p>Plataforma diseñada bajo estándares de accesibilidad para una experiencia fluida.</p>
-          </div>
-        </div>
       </div>
     </section>
   )

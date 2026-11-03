@@ -314,31 +314,6 @@ export function PaginaSeguimiento() {
               )}
             </div>
 
-            {/* Notificación oficial por correo de estados (Release 2 y 3) */}
-            <div className="order-email-notification-card">
-              <div className="email-notif-header">
-                <span className="email-icon" aria-hidden="true">📧</span>
-                <div>
-                  <strong>Aviso oficial por correo electrónico (Notificación de Estado):</strong>
-                  <p>
-                    Se ha enviado una notificación a{' '}
-                    <strong>{pedidoConsultado.cliente?.correo || 'tu correo registrado'}</strong> con la actualización en tiempo real de tu pedido.
-                  </p>
-                </div>
-              </div>
-              <div className="email-preview-box">
-                <span className="email-preview-tag">NOTIFICACIÓN AUTOMÁTICA ENVIADA</span>
-                <p className="email-preview-text">
-                  Estimado/a <strong>{pedidoConsultado.cliente?.nombre || 'Cliente'}</strong>: Te informamos que tu pedido{' '}
-                  <strong>#{pedidoConsultado.codigo}</strong> se encuentra en estado{' '}
-                  <span className="email-status-highlight">"{pedidoConsultado.estadoActual}"</span> con destino a{' '}
-                  <strong>{pedidoConsultado.direccionEnvio?.sector || 'Pichincha, Ecuador'}</strong>.
-                  {pedidoConsultado.estadoActual === 'Entregado'
-                    ? ' Tu paquete ha sido entregado en tu domicilio. ¡Gracias por confiar en Periféricos Pichincha!'
-                    : ' Nuestro centro de distribución en Quito continúa con la preparación y despacho.'}
-                </p>
-              </div>
-            </div>
           </div>
         )}
       </div>
