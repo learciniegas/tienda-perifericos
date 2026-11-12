@@ -11,8 +11,8 @@ import { createClient } from '@supabase/supabase-js'
 
 const env = import.meta.env || {}
 
-const coreUrl = env.VITE_CORE_SUPABASE_URL
-const coreKey = env.VITE_CORE_SUPABASE_ANON_KEY
+const coreUrl = env.VITE_CORE_SUPABASE_URL || env.VITE_SUPABASE_URL
+const coreKey = env.VITE_CORE_SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY
 
 const txUrl = env.VITE_TX_SUPABASE_URL
 const txKey = env.VITE_TX_SUPABASE_ANON_KEY
