@@ -400,3 +400,79 @@ export function validarCvv(cvv, franquicia = 'desconocida') {
 
   return { esValida: true, mensaje: 'CVV válido.' }
 }
+
+/**
+ * Valida una dirección de entrega conforme a los check constraints de Postgres (chk_direcciones_*).
+ * @param {object} direccion
+ * @returns {{ esValida: boolean, errores: object }}
+ */
+export function validarDireccionEnvio(direccion = {}) {
+  const errores = {}
+
+  const alias = String(direccion.alias || '').trim()
+  if (alias && alias.length > 50) {
+    errores.alias = 'El alias no puede superar los 50 caracteres.'
+  }
+
+  const sector = String(direccion.sector || '').trim()
+  if (!sector || sector.length < 2 || sector.length > 100) {
+    errores.sector = 'Selecciona o ingresa un sector válido de Quito.'
+  }
+
+  const callePrincipal = String(direccion.calle_principal || '').trim()
+  if (!callePrincipal || callePrincipal.length < 3 || callePrincipal.length > 120) {
+    errores.calle_principal = 'La calle principal debe tener entre 3 y 120 caracteres.'
+  }
+
+  const numeracion = String(direccion.numeracion || '').trim()
+  const regexNumeracion = /^[A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ][A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ #/.,-]*$/
+  if (!numeracion || numeracion.length < 1 || numeracion.length > 60 || !regexNumeracion.test(numeracion)) {
+    errores.numeracion = 'La numeración debe comenzar con letra o número (ej: N34-12, Lote 5).'
+  }
+
+  const referencia = String(direccion.referencia || '').trim()
+  if (referencia && (referencia.length < 5 || referencia.length > 200)) {
+    errores.referencia = 'La referencia debe tener entre 5 y 200 caracteres (o déjala vacía).'
+  }
+
+  return {
+    esValida: Object.keys(errores).length === 0,
+    errores
+  }
+}
+
+/**
+ * Valida datos fiscales conforme a los check constraints de Postgres (chk_fiscales_*).
+ * @param {object} fiscal
+ * @returns {{ esValida: boolean, errores: object }}
+ */
+export function validarDatosFiscales(fiscal = {}) {
+  const errores = {}
+  const tipo = fiscal.tipo === 'ruc' ? 'ruc' : 'cedula'
+  const identificacion = String(fiscal.identificacion_fiscal || '').trim()
+
+  if (identificacion === '9999999999999') {
+    // Consumidor Final autorizado
+  } else {
+    const valId = validarIdentificacion(identificacion, tipo)
+    if (!valId.esValida) {
+      errores.identificacion_fiscal = valId.mensaje
+    }
+  }
+
+  const razonSocial = String(fiscal.razon_social || '').trim()
+  const regexLetra = /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/
+  if (!razonSocial || razonSocial.length < 2 || razonSocial.length > 150 || !regexLetra.test(razonSocial)) {
+    errores.razon_social = 'La razón social debe tener entre 2 y 150 caracteres e incluir letras.'
+  }
+
+  const direccionFiscal = String(fiscal.direccion_fiscal || '').trim()
+  if (direccionFiscal && (direccionFiscal.length < 5 || direccionFiscal.length > 200)) {
+    errores.direccion_fiscal = 'La dirección fiscal debe tener entre 5 y 200 caracteres.'
+  }
+
+  return {
+    esValida: Object.keys(errores).length === 0,
+    errores
+  }
+}

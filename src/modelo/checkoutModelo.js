@@ -6,6 +6,15 @@
  */
 
 import { supabaseCore } from '../config/supabaseClient'
+import { validarDireccionEnvio, validarDatosFiscales } from './validadorModelo'
+
+// Limpieza proactiva de claves de almacenamiento local obsoletas (Fase 5)
+try {
+  localStorage.removeItem('tienda_perifericos_direcciones_v1')
+  localStorage.removeItem('tienda_perifericos_fiscales_v1')
+} catch {
+  // Ignorar en entornos sin localStorage
+}
 
 export const SECTORES_QUITO = [
   'La Carolina / Iñaquito',
@@ -19,9 +28,6 @@ export const SECTORES_QUITO = [
   'González Suárez / Bellavista',
   'Monteserrín / Jipijapa'
 ]
-
-const CLAVE_DIRECCIONES_LOCAL = 'tienda_perifericos_direcciones_v1'
-const CLAVE_FISCALES_LOCAL = 'tienda_perifericos_fiscales_v1'
 
 /**
  * Invoca de forma segura una Edge Function en Supabase TX enviando el JWT de sesión de Core.
@@ -84,278 +90,283 @@ export function construirPasosSeguimiento(estadoId = 2) {
 
 export const CheckoutModelo = {
 
-  obtenerClaveDirecciones(usuario) {
-    return usuario?.id ? `${CLAVE_DIRECCIONES_LOCAL}_${usuario.id}` : CLAVE_DIRECCIONES_LOCAL
-  },
-
-  obtenerClaveFiscales(usuario) {
-    return usuario?.id ? `${CLAVE_FISCALES_LOCAL}_${usuario.id}` : CLAVE_FISCALES_LOCAL
-  },
-
   /**
-   * Obtiene las direcciones guardadas del usuario.
-   * Consulta Supabase si hay sesión y recurre a almacenamiento local.
+   * Obtiene las direcciones guardadas del usuario desde ecommerce-core.
+   * Solo usuarios autenticados persisten direcciones; para invitados devuelve arreglo vacío.
    */
   async obtenerDirecciones(usuario) {
-    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
-      try {
-        const { data, error } = await supabaseCore
-          .from('direcciones_guardadas')
-          .select('*')
-          .eq('usuario_id', usuario.id)
-          .order('es_predeterminada', { ascending: false })
-
-        if (!error && data && data.length > 0) {
-          return data.map(d => ({
-            id: d.id,
-            alias: d.alias || 'Dirección de entrega',
-            sector: d.ciudad || 'La Carolina / Iñaquito',
-            calle_principal: d.calle_principal,
-            numeracion: d.numeracion,
-            referencia: d.referencia || '',
-            ciudad: 'Quito',
-            es_predeterminada: Boolean(d.es_predeterminada)
-          }))
-        }
-      } catch (err) {
-        console.warn('Fallo al consultar direcciones en Supabase, utilizando respaldo local:', err)
-      }
+    if (!usuario?.autenticado || !usuario?.id) {
+      return []
     }
 
-    try {
-      const clave = this.obtenerClaveDirecciones(usuario)
-      const datosLocales = localStorage.getItem(clave)
-      if (datosLocales) {
-        return JSON.parse(datosLocales)
-      }
-    } catch (e) {
-      console.warn('Error leyendo direcciones locales:', e)
+    const { data, error } = await supabaseCore
+      .from('direcciones_guardadas')
+      .select('*')
+      .eq('usuario_id', usuario.id)
+      .order('es_predeterminada', { ascending: false })
+      .order('id', { ascending: true })
+
+    if (error) {
+      console.error('Error al consultar direcciones en Supabase:', error)
+      throw new Error(error.message || 'Error al obtener las direcciones.')
     }
 
-    return []
-  },
-
-  guardarDireccionesLocales(direcciones, usuario) {
-    try {
-      const clave = this.obtenerClaveDirecciones(usuario)
-      localStorage.setItem(clave, JSON.stringify(direcciones))
-    } catch (e) {
-      console.warn('Error guardando direcciones locales:', e)
-    }
+    return (data || []).map(d => ({
+      id: d.id,
+      alias: d.alias || 'Mi dirección',
+      sector: d.sector || d.ciudad || SECTORES_QUITO[0],
+      calle_principal: d.calle_principal,
+      numeracion: d.numeracion,
+      referencia: d.referencia || '',
+      ciudad: d.ciudad || 'Quito',
+      es_predeterminada: Boolean(d.es_predeterminada)
+    }))
   },
 
   /**
-   * Agrega o actualiza una dirección de entrega en Quito.
+   * Guarda una nueva dirección en ecommerce-core para el usuario autenticado.
+   * Para invitados, solo normaliza y valida en memoria para el checkout en curso.
    */
   async guardarDireccion(nuevaDireccion, usuario) {
-    let direccionesActuales = await this.obtenerDirecciones(usuario)
-
-    const esPrimera = direccionesActuales.length === 0
-    const debeSerPredeterminada = esPrimera || Boolean(nuevaDireccion.es_predeterminada)
-
-    if (debeSerPredeterminada) {
-      direccionesActuales = direccionesActuales.map(d => ({ ...d, es_predeterminada: false }))
+    const val = validarDireccionEnvio(nuevaDireccion)
+    if (!val.esValida) {
+      const primerError = Object.values(val.errores)[0]
+      throw new Error(primerError)
     }
 
-    const direccionNormalizada = {
-      id: nuevaDireccion.id || 'dir-' + Date.now(),
-      alias: nuevaDireccion.alias?.trim() || 'Dirección personal',
-      sector: nuevaDireccion.sector || SECTORES_QUITO[0],
-      calle_principal: nuevaDireccion.calle_principal?.trim() || '',
-      numeracion: nuevaDireccion.numeracion?.trim() || '',
-      referencia: nuevaDireccion.referencia?.trim() || '',
-      ciudad: 'Quito',
-      es_predeterminada: debeSerPredeterminada
+    const aliasNormalizado = nuevaDireccion.alias?.trim() || 'Mi dirección'
+    const sectorNormalizado = nuevaDireccion.sector || SECTORES_QUITO[0]
+    const calleNormalizada = nuevaDireccion.calle_principal?.trim()
+    const numeracionNormalizada = nuevaDireccion.numeracion?.trim()
+    const referenciaNormalizada = nuevaDireccion.referencia?.trim() || 'Frente a vía principal'
+
+    if (!usuario?.autenticado || !usuario?.id) {
+      return [{
+        id: 'invitado',
+        alias: aliasNormalizado,
+        sector: sectorNormalizado,
+        calle_principal: calleNormalizada,
+        numeracion: numeracionNormalizada,
+        referencia: referenciaNormalizada,
+        ciudad: 'Quito',
+        es_predeterminada: true
+      }]
     }
 
-    direccionesActuales = [direccionNormalizada, ...direccionesActuales.filter(d => d.id !== direccionNormalizada.id)]
-    this.guardarDireccionesLocales(direccionesActuales, usuario)
-
-    // Si hay usuario con UUID en Supabase, sincronizar
-    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
-      try {
-        await supabaseCore.from('direcciones_guardadas').insert({
-          usuario_id: usuario.id,
-          alias: direccionNormalizada.alias,
-          calle_principal: direccionNormalizada.calle_principal,
-          numeracion: direccionNormalizada.numeracion,
-          ciudad: direccionNormalizada.sector,
-          referencia: direccionNormalizada.referencia,
-          es_predeterminada: direccionNormalizada.es_predeterminada
-        })
-      } catch (err) {
-        console.warn('No se pudo sincronizar dirección con Supabase:', err)
-      }
+    const esPredeterminada = Boolean(nuevaDireccion.es_predeterminada)
+    if (esPredeterminada) {
+      await supabaseCore
+        .from('direcciones_guardadas')
+        .update({ es_predeterminada: false })
+        .eq('usuario_id', usuario.id)
+        .catch(() => {})
     }
 
-    return direccionesActuales
+    const { error } = await supabaseCore
+      .from('direcciones_guardadas')
+      .insert({
+        usuario_id: usuario.id,
+        alias: aliasNormalizado,
+        calle_principal: calleNormalizada,
+        numeracion: numeracionNormalizada,
+        sector: sectorNormalizado,
+        ciudad: 'Quito',
+        referencia: referenciaNormalizada,
+        es_predeterminada: esPredeterminada
+      })
+
+    if (error) {
+      console.error('Error insertando en direcciones_guardadas:', error)
+      throw new Error(error.message || 'No fue posible guardar la dirección en la base de datos.')
+    }
+
+    return this.obtenerDirecciones(usuario)
   },
 
   /**
-   * Elimina una dirección de entrega guardada (Gestionar Direcciones).
+   * Elimina una dirección de entrega guardada en ecommerce-core.
    */
   async eliminarDireccion(idDireccion, usuario) {
-    let direccionesActuales = await this.obtenerDirecciones(usuario)
-    direccionesActuales = direccionesActuales.filter(d => d.id !== idDireccion)
+    if (!usuario?.autenticado || !usuario?.id) return []
 
-    if (direccionesActuales.length > 0 && !direccionesActuales.some(d => d.es_predeterminada)) {
-      direccionesActuales[0].es_predeterminada = true
+    const { error } = await supabaseCore
+      .from('direcciones_guardadas')
+      .delete()
+      .match({ id: idDireccion, usuario_id: usuario.id })
+
+    if (error) {
+      console.error('Error eliminando dirección de Supabase:', error)
+      throw new Error(error.message || 'No fue posible eliminar la dirección.')
     }
 
-    this.guardarDireccionesLocales(direccionesActuales, usuario)
-
-    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
-      try {
-        await supabaseCore.from('direcciones_guardadas').delete().eq('id', idDireccion)
-      } catch (err) {
-        console.warn('No se pudo eliminar dirección de Supabase:', err)
-      }
+    const restantes = await this.obtenerDirecciones(usuario)
+    if (restantes.length > 0 && !restantes.some(d => d.es_predeterminada)) {
+      await this.establecerDireccionPredeterminada(restantes[0].id, usuario)
+      return this.obtenerDirecciones(usuario)
     }
 
-    return direccionesActuales
+    return restantes
   },
 
   /**
-   * Marca una dirección como predeterminada.
+   * Marca una dirección como predeterminada de forma atómica.
    */
   async establecerDireccionPredeterminada(idDireccion, usuario) {
-    let direccionesActuales = await this.obtenerDirecciones(usuario)
-    direccionesActuales = direccionesActuales.map(d => ({
-      ...d,
-      es_predeterminada: d.id === idDireccion
-    }))
+    if (!usuario?.autenticado || !usuario?.id) return []
 
-    this.guardarDireccionesLocales(direccionesActuales, usuario)
-    return direccionesActuales
+    const { error } = await supabaseCore.rpc('establecer_direccion_predeterminada', {
+      p_direccion_id: idDireccion
+    })
+
+    if (error) {
+      console.warn('Fallo RPC establecer_direccion_predeterminada, ejecutando alternativa:', error)
+      await supabaseCore
+        .from('direcciones_guardadas')
+        .update({ es_predeterminada: false })
+        .eq('usuario_id', usuario.id)
+      await supabaseCore
+        .from('direcciones_guardadas')
+        .update({ es_predeterminada: true })
+        .match({ id: idDireccion, usuario_id: usuario.id })
+    }
+
+    return this.obtenerDirecciones(usuario)
   },
 
   /**
-   * Obtiene los perfiles de datos fiscales guardados.
+   * Obtiene los datos fiscales guardados del usuario desde ecommerce-core.
    */
   async obtenerDatosFiscales(usuario) {
-    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
-      try {
-        const { data, error } = await supabaseCore
-          .from('datos_fiscales_guardados')
-          .select('*')
-          .eq('usuario_id', usuario.id)
-          .order('es_predeterminado', { ascending: false })
-
-        if (!error && data && data.length > 0) {
-          return data.map(f => ({
-            id: f.id,
-            tipo: f.identificacion_fiscal?.length === 13 ? 'ruc' : 'cedula',
-            identificacion_fiscal: f.identificacion_fiscal,
-            razon_social: f.razon_social,
-            direccion_fiscal: f.direccion_fiscal || '',
-            es_predeterminado: Boolean(f.es_predeterminado)
-          }))
-        }
-      } catch (err) {
-        console.warn('Fallo al consultar datos fiscales en Supabase:', err)
-      }
+    if (!usuario?.autenticado || !usuario?.id) {
+      return []
     }
 
-    try {
-      const clave = this.obtenerClaveFiscales(usuario)
-      const datosLocales = localStorage.getItem(clave)
-      if (datosLocales) {
-        return JSON.parse(datosLocales)
-      }
-    } catch (e) {
-      console.warn('Error leyendo fiscales locales:', e)
+    const { data, error } = await supabaseCore
+      .from('datos_fiscales_guardados')
+      .select('*')
+      .eq('usuario_id', usuario.id)
+      .order('es_predeterminado', { ascending: false })
+      .order('id', { ascending: true })
+
+    if (error) {
+      console.error('Error al consultar datos fiscales en Supabase:', error)
+      throw new Error(error.message || 'Error al obtener los datos fiscales.')
     }
 
-    return []
-  },
-
-  guardarFiscalesLocales(fiscales, usuario) {
-    try {
-      const clave = this.obtenerClaveFiscales(usuario)
-      localStorage.setItem(clave, JSON.stringify(fiscales))
-    } catch (e) {
-      console.warn('Error guardando fiscales locales:', e)
-    }
+    return (data || []).map(f => ({
+      id: f.id,
+      tipo: f.identificacion_fiscal?.length === 13 ? 'ruc' : 'cedula',
+      identificacion_fiscal: f.identificacion_fiscal,
+      razon_social: f.razon_social,
+      direccion_fiscal: f.direccion_fiscal || 'Quito, Pichincha',
+      es_predeterminado: Boolean(f.es_predeterminado)
+    }))
   },
 
   /**
-   * Agrega un nuevo perfil de datos fiscales (cédula o RUC).
+   * Agrega un nuevo dato fiscal en ecommerce-core para el usuario autenticado.
    */
   async guardarDatoFiscal(nuevoFiscal, usuario) {
-    let fiscalesActuales = await this.obtenerDatosFiscales(usuario)
-
-    const esPrimero = fiscalesActuales.length === 0
-    const debeSerPredeterminado = esPrimero || Boolean(nuevoFiscal.es_predeterminado)
-
-    if (debeSerPredeterminado) {
-      fiscalesActuales = fiscalesActuales.map(f => ({ ...f, es_predeterminado: false }))
+    const val = validarDatosFiscales(nuevoFiscal)
+    if (!val.esValida) {
+      const primerError = Object.values(val.errores)[0]
+      throw new Error(primerError)
     }
 
-    const fiscalNormalizado = {
-      id: nuevoFiscal.id || 'fisc-' + Date.now(),
-      tipo: nuevoFiscal.tipo || 'cedula',
-      identificacion_fiscal: nuevoFiscal.identificacion_fiscal?.trim() || '',
-      razon_social: nuevoFiscal.razon_social?.trim() || 'Consumidor Final',
-      direccion_fiscal: nuevoFiscal.direccion_fiscal?.trim() || 'Quito, Pichincha',
-      es_predeterminado: debeSerPredeterminado
+    const tipoNormalizado = nuevoFiscal.tipo === 'ruc' ? 'ruc' : 'cedula'
+    const idFiscalNormalizada = nuevoFiscal.identificacion_fiscal?.trim()
+    const razonSocialNormalizada = nuevoFiscal.razon_social?.trim()
+    const dirFiscalNormalizada = nuevoFiscal.direccion_fiscal?.trim() || 'Quito, Pichincha'
+
+    if (!usuario?.autenticado || !usuario?.id) {
+      return [{
+        id: 'invitado',
+        tipo: tipoNormalizado,
+        identificacion_fiscal: idFiscalNormalizada,
+        razon_social: razonSocialNormalizada,
+        direccion_fiscal: dirFiscalNormalizada,
+        es_predeterminado: true
+      }]
     }
 
-    fiscalesActuales = [fiscalNormalizado, ...fiscalesActuales.filter(f => f.id !== fiscalNormalizado.id)]
-    this.guardarFiscalesLocales(fiscalesActuales, usuario)
+    const esPredeterminado = Boolean(nuevoFiscal.es_predeterminado)
+    if (esPredeterminado) {
+      await supabaseCore
+        .from('datos_fiscales_guardados')
+        .update({ es_predeterminado: false })
+        .eq('usuario_id', usuario.id)
+        .catch(() => {})
+    }
 
-    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
-      try {
-        await supabaseCore.from('datos_fiscales_guardados').insert({
-          usuario_id: usuario.id,
-          identificacion_fiscal: fiscalNormalizado.identificacion_fiscal,
-          razon_social: fiscalNormalizado.razon_social,
-          direccion_fiscal: fiscalNormalizado.direccion_fiscal,
-          es_predeterminado: fiscalNormalizado.es_predeterminado
-        })
-      } catch (err) {
-        console.warn('No se pudo sincronizar fiscal con Supabase:', err)
+    const { error } = await supabaseCore
+      .from('datos_fiscales_guardados')
+      .insert({
+        usuario_id: usuario.id,
+        identificacion_fiscal: idFiscalNormalizada,
+        razon_social: razonSocialNormalizada,
+        direccion_fiscal: dirFiscalNormalizada,
+        es_predeterminado: esPredeterminado
+      })
+
+    if (error) {
+      console.error('Error insertando en datos_fiscales_guardados:', error)
+      if (error.code === '23505') {
+        throw new Error('Esta identificación fiscal ya está guardada en tu cuenta.')
       }
+      throw new Error(error.message || 'No se pudieron guardar los datos fiscales.')
     }
 
-    return fiscalesActuales
+    return this.obtenerDatosFiscales(usuario)
   },
 
   /**
-   * Elimina un perfil fiscal guardado (Gestionar Datos Fiscales).
+   * Elimina un dato fiscal guardado en ecommerce-core.
    */
   async eliminarDatoFiscal(idFiscal, usuario) {
-    let fiscalesActuales = await this.obtenerDatosFiscales(usuario)
-    fiscalesActuales = fiscalesActuales.filter(f => f.id !== idFiscal)
+    if (!usuario?.autenticado || !usuario?.id) return []
 
-    if (fiscalesActuales.length > 0 && !fiscalesActuales.some(f => f.es_predeterminado)) {
-      fiscalesActuales[0].es_predeterminado = true
+    const { error } = await supabaseCore
+      .from('datos_fiscales_guardados')
+      .delete()
+      .match({ id: idFiscal, usuario_id: usuario.id })
+
+    if (error) {
+      console.error('Error eliminando dato fiscal de Supabase:', error)
+      throw new Error(error.message || 'No fue posible eliminar el registro fiscal.')
     }
 
-    this.guardarFiscalesLocales(fiscalesActuales, usuario)
-
-    if (usuario?.autenticado && usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) {
-      try {
-        await supabaseCore.from('datos_fiscales_guardados').delete().eq('id', idFiscal)
-      } catch (err) {
-        console.warn('No se pudo eliminar fiscal de Supabase:', err)
-      }
+    const restantes = await this.obtenerDatosFiscales(usuario)
+    if (restantes.length > 0 && !restantes.some(f => f.es_predeterminado)) {
+      await this.establecerDatoFiscalPredeterminado(restantes[0].id, usuario)
+      return this.obtenerDatosFiscales(usuario)
     }
 
-    return fiscalesActuales
+    return restantes
   },
 
   /**
-   * Marca un perfil fiscal como predeterminado.
+   * Marca un perfil fiscal como predeterminado de forma atómica.
    */
   async establecerDatoFiscalPredeterminado(idFiscal, usuario) {
-    let fiscalesActuales = await this.obtenerDatosFiscales(usuario)
-    fiscalesActuales = fiscalesActuales.map(f => ({
-      ...f,
-      es_predeterminado: f.id === idFiscal
-    }))
+    if (!usuario?.autenticado || !usuario?.id) return []
 
-    this.guardarFiscalesLocales(fiscalesActuales, usuario)
-    return fiscalesActuales
+    const { error } = await supabaseCore.rpc('establecer_dato_fiscal_predeterminado', {
+      p_fiscal_id: idFiscal
+    })
+
+    if (error) {
+      console.warn('Fallo RPC establecer_dato_fiscal_predeterminado, ejecutando alternativa:', error)
+      await supabaseCore
+        .from('datos_fiscales_guardados')
+        .update({ es_predeterminado: false })
+        .eq('usuario_id', usuario.id)
+      await supabaseCore
+        .from('datos_fiscales_guardados')
+        .update({ es_predeterminado: true })
+        .match({ id: idFiscal, usuario_id: usuario.id })
+    }
+
+    return this.obtenerDatosFiscales(usuario)
   },
 
   /**

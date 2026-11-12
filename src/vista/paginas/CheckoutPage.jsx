@@ -635,6 +635,11 @@ export function PaginaCheckout() {
             ) : (
               <form onSubmit={guardarNuevaDireccion} className="new-entry-form" aria-label="Formulario de nueva dirección">
                 <h3 className="new-entry-title">Registrar nueva ubicación en Quito</h3>
+                {erroresDireccion.general && (
+                  <div className="checkout-error-alert" role="alert" style={{ marginBottom: '12px' }}>
+                    <p>{erroresDireccion.general}</p>
+                  </div>
+                )}
 
                 <div className="form-field">
                   <label htmlFor="dir-sector">
@@ -814,6 +819,11 @@ export function PaginaCheckout() {
             ) : (
               <form onSubmit={guardarNuevoDatoFiscal} className="new-entry-form" aria-label="Formulario de nuevos datos fiscales">
                 <h3 className="new-entry-title">Registrar perfil de facturación</h3>
+                {erroresFiscal.general && (
+                  <div className="checkout-error-alert" role="alert" style={{ marginBottom: '12px' }}>
+                    <p>{erroresFiscal.general}</p>
+                  </div>
+                )}
 
                 <div className="form-grid-2">
                   <div className="form-field">

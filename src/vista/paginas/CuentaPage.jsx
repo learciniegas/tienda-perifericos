@@ -146,18 +146,22 @@ export function PaginaCuenta() {
       return
     }
 
-    const actualizadas = await CheckoutModelo.guardarDireccion(formDireccion, usuario)
-    setDirecciones(actualizadas)
-    setModoNuevaDireccion(false)
-    setFormDireccion({
-      alias: '',
-      sector: SECTORES_QUITO[0],
-      calle_principal: '',
-      numeracion: '',
-      referencia: '',
-      es_predeterminada: false
-    })
-    setErroresDir({})
+    try {
+      const actualizadas = await CheckoutModelo.guardarDireccion(formDireccion, usuario)
+      setDirecciones(actualizadas)
+      setModoNuevaDireccion(false)
+      setFormDireccion({
+        alias: '',
+        sector: SECTORES_QUITO[0],
+        calle_principal: '',
+        numeracion: '',
+        referencia: '',
+        es_predeterminada: false
+      })
+      setErroresDir({})
+    } catch (err) {
+      setErroresDir({ general: err.message || 'No fue posible guardar la dirección.' })
+    }
   }
 
   const borrarDireccion = async (id) => {
@@ -190,17 +194,21 @@ export function PaginaCuenta() {
       return
     }
 
-    const actualizados = await CheckoutModelo.guardarDatoFiscal(formFiscal, usuario)
-    setDatosFiscales(actualizados)
-    setModoNuevoFiscal(false)
-    setFormFiscal({
-      tipo: 'cedula',
-      identificacion_fiscal: '',
-      razon_social: '',
-      direccion_fiscal: '',
-      es_predeterminado: false
-    })
-    setErroresFisc({})
+    try {
+      const actualizados = await CheckoutModelo.guardarDatoFiscal(formFiscal, usuario)
+      setDatosFiscales(actualizados)
+      setModoNuevoFiscal(false)
+      setFormFiscal({
+        tipo: 'cedula',
+        identificacion_fiscal: '',
+        razon_social: '',
+        direccion_fiscal: '',
+        es_predeterminado: false
+      })
+      setErroresFisc({})
+    } catch (err) {
+      setErroresFisc({ general: err.message || 'No fue posible guardar los datos fiscales.' })
+    }
   }
 
   const borrarFiscal = async (id) => {
@@ -529,6 +537,11 @@ export function PaginaCuenta() {
           {modoNuevaDireccion && (
             <form onSubmit={guardarDireccion} className="account-add-form" aria-label="Agregar nueva dirección">
               <h3 className="new-entry-title">Registrar nueva dirección en Quito</h3>
+              {erroresDir.general && (
+                <div className="checkout-error-alert" role="alert" style={{ marginBottom: '12px' }}>
+                  <p>{erroresDir.general}</p>
+                </div>
+              )}
               
               <div className="form-field">
                 <label htmlFor="cta-dir-sector">Sector de Quito *</label>
@@ -697,6 +710,11 @@ export function PaginaCuenta() {
           {modoNuevoFiscal && (
             <form onSubmit={guardarFiscal} className="account-add-form" aria-label="Agregar datos fiscales">
               <h3 className="new-entry-title">Registrar datos de facturación</h3>
+              {erroresFisc.general && (
+                <div className="checkout-error-alert" role="alert" style={{ marginBottom: '12px' }}>
+                  <p>{erroresFisc.general}</p>
+                </div>
+              )}
 
               <div className="form-grid-2">
                 <div className="form-field">
