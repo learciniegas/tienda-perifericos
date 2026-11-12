@@ -4,14 +4,29 @@
  * y persistencia por ítem.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { CarritoModelo } from '../modelo/carritoModelo'
+import { obtenerConfiguracionTienda } from '../modelo/catalogoModelo'
 import { ContextoCarrito } from './contextos'
 
 export function ProveedorCarrito({ children }) {
   const [articulos, setArticulos] = useState(() => CarritoModelo.obtenerArticulos())
+  const [configuracion, setConfiguracion] = useState(null)
   const [mensajeAccesible, setMensajeAccesible] = useState('')
   const [notificacionVisual, setNotificacionVisual] = useState(null)
+
+  useEffect(() => {
+    let activo = true
+    obtenerConfiguracionTienda()
+      .then((cfg) => {
+        if (!activo) return
+        setConfiguracion(cfg)
+      })
+      .catch(() => {})
+    return () => {
+      activo = false
+    }
+  }, [])
 
   const limpiarMensaje = useCallback(() => {
     setMensajeAccesible('')
@@ -81,11 +96,12 @@ export function ProveedorCarrito({ children }) {
 
   // Cálculo memoizado de totales dinámicos
   const totales = useMemo(() => {
-    return CarritoModelo.calcularTotales(articulos)
-  }, [articulos])
+    return CarritoModelo.calcularTotales(articulos, configuracion)
+  }, [articulos, configuracion])
 
   const valorContexto = {
     articulos,
+    configuracion,
     articulosSeleccionados: totales.articulosSeleccionados,
     cantidadTotal: totales.cantidadTotal,
     cantidadSeleccionada: totales.cantidadSeleccionada,

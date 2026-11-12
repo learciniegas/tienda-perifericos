@@ -121,8 +121,6 @@ export function PaginaCarrito() {
                           >
                             Eliminar
                           </button>
-                          <span className="item-action-separator" aria-hidden="true">|</span>
-                          <span className="stock-pill-notice">En inventario Quito</span>
                         </div>
                       </div>
                     </div>

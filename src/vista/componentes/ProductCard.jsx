@@ -17,6 +17,7 @@ export function TarjetaProducto({ producto }) {
   const agregarProducto = (evento) => {
     evento.preventDefault()
     evento.stopPropagation()
+    if (!producto.en_stock) return
     setAgregando(true)
     agregarAlCarrito(producto, 1)
     setTimeout(() => setAgregando(false), 800)
@@ -24,8 +25,12 @@ export function TarjetaProducto({ producto }) {
 
   const precioNum = Number(producto.precio) || 0
   const precioActual = precioNum.toFixed(2)
-  const precioAnterior = producto.precio_anterior || (precioNum * 1.25).toFixed(2)
-  const descuento = producto.descuento_porcentaje || 20
+  const tieneDescuento = Boolean(producto.precio_anterior && Number(producto.precio_anterior) > precioNum)
+  const precioAnterior = tieneDescuento ? Number(producto.precio_anterior).toFixed(2) : null
+  const descuento = tieneDescuento
+    ? producto.descuento_porcentaje || Math.round(((Number(producto.precio_anterior) - precioNum) / Number(producto.precio_anterior)) * 100)
+    : null
+  const enStock = Boolean(producto.en_stock)
 
   return (
     <article className="product-card" aria-labelledby={`prod-title-${producto.id}`}>
@@ -64,20 +69,28 @@ export function TarjetaProducto({ producto }) {
             <span className="price-amount">{Math.floor(precioNum)}</span>
             <span className="price-cents">.{precioActual.split('.')[1]}</span>
           </div>
-          <p className="price-comparison">
-            Antes ${precioAnterior}, ahora ${precioActual}, {descuento}% menos
-          </p>
+          {tieneDescuento && (
+            <p className="price-comparison">
+              Antes ${precioAnterior}, ahora ${precioActual}, {descuento}% menos
+            </p>
+          )}
+          {!enStock && (
+            <p className="stock-warning-text" role="status">
+              Agotado
+            </p>
+          )}
         </div>
 
         {/* Acciones de compra (HU-04) */}
         <div className="product-actions">
           <button
             type="button"
-            className={`btn-primary btn-add-cart ${agregando ? 'btn-active' : ''}`}
+            className={`btn-primary btn-add-cart ${agregando ? 'btn-active' : ''} ${!enStock ? 'btn-disabled' : ''}`}
             onClick={agregarProducto}
-            aria-label={`Agregar ${producto.nombre} al carrito por $${precioActual}`}
+            disabled={!enStock}
+            aria-label={enStock ? `Agregar ${producto.nombre} al carrito por $${precioActual}` : `${producto.nombre} agotado`}
           >
-            {agregando ? '✓ ¡Agregado!' : 'Agregar al carrito'}
+            {!enStock ? 'Agotado' : (agregando ? '✓ ¡Agregado!' : 'Agregar al carrito')}
           </button>
 
           <Link

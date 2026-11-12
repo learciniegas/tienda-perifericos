@@ -228,8 +228,16 @@ export function PaginaProductoDetalle() {
   }
 
   const precioNum = Number(producto.precio) || 0
-  const precioAnteriorNum = Number(producto.precio_anterior) || (precioNum * 1.25)
-  const ahorro = (precioAnteriorNum - precioNum).toFixed(2)
+  const tieneDescuento = Boolean(producto.precio_anterior && Number(producto.precio_anterior) > precioNum)
+  const precioAnteriorNum = tieneDescuento ? Number(producto.precio_anterior) : null
+  const ahorro = tieneDescuento ? (precioAnteriorNum - precioNum).toFixed(2) : null
+  const descuentoPorcentaje = tieneDescuento
+    ? (producto.descuento_porcentaje || Math.round(((precioAnteriorNum - precioNum) / precioAnteriorNum) * 100))
+    : null
+  const stockDisponible = Number(producto.stock_disponible ?? (producto.en_stock ? 10 : 0))
+  const enStock = Boolean(producto.en_stock && stockDisponible > 0)
+  const maxOpciones = Math.min(10, Math.max(1, stockDisponible))
+  const opcionesCantidad = Array.from({ length: maxOpciones }, (_, i) => i + 1)
 
   return (
     <div className="product-detail-page-container">
@@ -324,12 +332,14 @@ export function PaginaProductoDetalle() {
               <span className="detail-price-number">{Math.floor(precioNum)}</span>
               <span className="detail-price-cents">.{precioNum.toFixed(2).split('.')[1]}</span>
             </div>
-            <div className="detail-savings-block">
-              <span className="detail-old-price">Antes: ${precioAnteriorNum.toFixed(2)}</span>
-              <span className="detail-discount-tag">-{producto.descuento_porcentaje || 20}%</span>
-              <span className="detail-savings-text">Ahorras: ${ahorro}</span>
-            </div>
-            <p className="detail-vat-legend">Precio incluye 15% de IVA.</p>
+            {tieneDescuento && (
+              <div className="detail-savings-block">
+                <span className="detail-old-price">Antes: ${precioAnteriorNum.toFixed(2)}</span>
+                <span className="detail-discount-tag">-{descuentoPorcentaje}%</span>
+                <span className="detail-savings-text">Ahorras: ${ahorro}</span>
+              </div>
+            )}
+            <p className="detail-vat-legend">Precio antes de impuestos (+15% IVA al finalizar la compra).</p>
           </div>
 
           <hr className="detail-divider" />
@@ -372,6 +382,18 @@ export function PaginaProductoDetalle() {
               <span className="buybox-price">${precioNum.toFixed(2)}</span>
             </div>
 
+            <div className="buybox-stock-status">
+              {enStock ? (
+                stockDisponible <= 5 ? (
+                  <p className="stock-notice low-stock" role="status">⚠️ Solo quedan {stockDisponible} unidades disponibles</p>
+                ) : (
+                  <p className="stock-notice in-stock" role="status">✓ En stock ({stockDisponible} disponibles)</p>
+                )
+              ) : (
+                <p className="stock-notice out-of-stock" role="status">❌ Agotado temporalmente</p>
+              )}
+            </div>
+
             <div className="buybox-delivery-info">
               <p className="delivery-location">
                 📍 Entrega en Quito y valles: <strong>24 a 48 horas hábiles</strong>
@@ -379,34 +401,37 @@ export function PaginaProductoDetalle() {
             </div>
 
             {/* Selector de Cantidad */}
-            <div className="buybox-qty-picker">
-              <label htmlFor="buybox-qty-select" className="qty-picker-label">
-                Cantidad:
-              </label>
-              <select
-                id="buybox-qty-select"
-                value={cantidad}
-                onChange={(e) => setCantidad(Number(e.target.value))}
-                className="qty-picker-dropdown"
-                aria-label={`Seleccionar cantidad para comprar de ${producto.nombre}`}
-              >
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
-                  <option key={num} value={num}>
-                    {num} {num === 1 ? 'unidad' : 'unidades'}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {enStock && (
+              <div className="buybox-qty-picker">
+                <label htmlFor="buybox-qty-select" className="qty-picker-label">
+                  Cantidad:
+                </label>
+                <select
+                  id="buybox-qty-select"
+                  value={cantidad}
+                  onChange={(e) => setCantidad(Number(e.target.value))}
+                  className="qty-picker-dropdown"
+                  aria-label={`Seleccionar cantidad para comprar de ${producto.nombre}`}
+                >
+                  {opcionesCantidad.map((num) => (
+                    <option key={num} value={num}>
+                      {num} {num === 1 ? 'unidad' : 'unidades'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Botón Añadir al Carrito (HU-06) */}
             <button
               type="button"
-              className={`btn-primary btn-buybox-add ${agregando ? 'btn-active' : ''}`}
+              className={`btn-primary btn-buybox-add ${agregando ? 'btn-active' : ''} ${!enStock ? 'btn-disabled' : ''}`}
               onClick={manejarAgregarCarrito}
-              aria-label={`Añadir ${cantidad} ${cantidad === 1 ? 'unidad' : 'unidades'} de ${producto.nombre} al carrito`}
+              disabled={!enStock}
+              aria-label={enStock ? `Añadir ${cantidad} ${cantidad === 1 ? 'unidad' : 'unidades'} de ${producto.nombre} al carrito` : `${producto.nombre} agotado`}
             >
               <IconoPeriferico tipo="cart" size={18} />
-              <span>{agregando ? '✓ ¡Añadido al carrito!' : 'Añadir al carrito'}</span>
+              <span>{!enStock ? 'Agotado' : (agregando ? '✓ ¡Añadido al carrito!' : 'Añadir al carrito')}</span>
             </button>
 
             {/* Botón Comprar Ahora */}
@@ -414,7 +439,8 @@ export function PaginaProductoDetalle() {
               type="button"
               className="btn-secondary btn-buybox-now"
               onClick={manejarComprarAhora}
-              aria-label={`Comprar ahora ${producto.nombre} y proceder al checkout`}
+              disabled={!enStock}
+              aria-label={enStock ? `Comprar ahora ${producto.nombre} y proceder al checkout` : `${producto.nombre} agotado`}
             >
               <span>Comprar ahora</span>
             </button>

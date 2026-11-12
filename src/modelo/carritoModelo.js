@@ -123,9 +123,9 @@ export const CarritoModelo = {
   },
 
   /**
-   * Calcula los totales dinámicamente con base en los artículos seleccionados (HU-07).
+   * Calcula los totales dinámicamente con base en los artículos seleccionados (HU-07) y la configuración de la tienda.
    */
-  calcularTotales(articulos) {
+  calcularTotales(articulos, configuracion = null) {
     const cantidadTotal = articulos.reduce((acumulado, articulo) => acumulado + articulo.cantidad, 0)
     
     // Filtro de artículos marcados para compra
@@ -136,10 +136,13 @@ export const CarritoModelo = {
       return acumulado + (articulo.precio * articulo.cantidad)
     }, 0)
 
-    // Envíos a Quito y provincia de Pichincha: Gratis a partir de $50, caso contrario $5.00
-    const envio = subtotal > 50 || subtotal === 0 ? 0 : 5.00
-    // IVA vigente en Ecuador: 15%
-    const impuestos = +(subtotal * 0.15).toFixed(2)
+    const ivaPorcentaje = Number(configuracion?.iva_porcentaje) || 0.15
+    const envioGratisDesde = Number(configuracion?.envio_gratis_desde) || 50.00
+    const costoEnvio = Number(configuracion?.costo_envio) || 5.00
+
+    // Envíos a Quito y provincia de Pichincha: Gratis a partir de $50 (>=), caso contrario costo de envío
+    const envio = subtotal >= envioGratisDesde || subtotal === 0 ? 0 : costoEnvio
+    const impuestos = +(subtotal * ivaPorcentaje).toFixed(2)
     const total = +(subtotal + envio + impuestos).toFixed(2)
 
     const todosSeleccionados = articulos.length > 0 && articulos.every(art => art.seleccionado !== false)
@@ -153,7 +156,8 @@ export const CarritoModelo = {
       total,
       articulosSeleccionados,
       haySeleccionados: articulosSeleccionados.length > 0,
-      todosSeleccionados
+      todosSeleccionados,
+      envioGratisDesde
     }
   }
 }

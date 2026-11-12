@@ -1,43 +1,38 @@
 /**
  * VISTA: FaqPage.jsx
  * Página de Preguntas Frecuentes (FAQ) y Centro de Soporte (HU-16).
- * Acordeón informativo enfocado en cobertura y envíos para la provincia de Pichincha.
+ * Lee las preguntas directamente de la base de datos (Core, tabla preguntas_frecuentes).
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { obtenerPreguntasFrecuentes } from '../../modelo/catalogoModelo'
 import { IconoPeriferico } from '../componentes/PeripheralIcon'
 
-const PREGUNTAS_FRECUENTES = [
-  {
-    id: 1,
-    pregunta: '¿Cuáles son las formas de pago aceptadas?',
-    respuesta: 'Aceptamos transferencias bancarias directas, tarjetas de débito y crédito a través de nuestra pasarela de pagos integrada y pago contra entrega coordinado dentro del perímetro urbano de Quito y cantones de Pichincha.'
-  },
-  {
-    id: 2,
-    pregunta: '¿Cuál es la zona de cobertura y tiempos de entrega?',
-    respuesta: 'Nuestros envíos están restringidos y optimizados exclusivamente para la provincia de Pichincha (Quito, Rumiñahui, Mejía, Cayambe, Pedro Moncayo, etc.). Los tiempos habituales de despacho son de 24 a 48 horas hábiles tras la confirmación de la orden.'
-  },
-  {
-    id: 3,
-    pregunta: '¿Puedo comprar sin registrarme previamente?',
-    respuesta: 'Sí. Puedes añadir cualquier periférico a tu carrito de forma libre. Al momento de proceder con la compra, podrás ingresar tus datos de contacto y la dirección exacta de entrega en Pichincha.'
-  },
-  {
-    id: 4,
-    pregunta: '¿Qué garantía tienen los periféricos adquiridos?',
-    respuesta: 'Todos los productos (teclados mecánicos, ratones gamer, auriculares, webcams y alfombrillas) cuentan con 12 meses de garantía directa contra fallas de switch, sensores ópticos o conectividad.'
-  },
-  {
-    id: 5,
-    pregunta: '¿Cómo solicito mi factura electrónica con datos fiscales?',
-    respuesta: 'Durante el paso de confirmación de tu pedido podrás ingresar tu Razón Social, Cédula o RUC para que nuestro sistema emita el comprobante correspondiente.'
-  }
-]
-
 export function PaginaPreguntasFrecuentes() {
+  const [preguntas, setPreguntas] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState(null)
   const [respuestasAbiertas, setRespuestasAbiertas] = useState({ 1: true, 2: true })
+
+  useEffect(() => {
+    let activo = true
+    obtenerPreguntasFrecuentes()
+      .then((datos) => {
+        if (!activo) return
+        setPreguntas(datos)
+        setCargando(false)
+      })
+      .catch((err) => {
+        if (!activo) return
+        setError(err.message || 'Error al cargar preguntas frecuentes.')
+        setCargando(false)
+      })
+
+    return () => {
+      activo = false
+    }
+  }, [])
 
   const alternarRespuesta = (id) => {
     setRespuestasAbiertas(anteriores => ({
@@ -57,42 +52,55 @@ export function PaginaPreguntasFrecuentes() {
 
       <div className="faq-content-wrapper">
         <div className="faq-list" role="region" aria-label="Listado de preguntas frecuentes">
-          {PREGUNTAS_FRECUENTES.map((pregunta) => {
-            const estaAbierta = !!respuestasAbiertas[pregunta.id]
-            const idBoton = `faq-btn-${pregunta.id}`
-            const idPanel = `faq-panel-${pregunta.id}`
+          {cargando ? (
+            <div className="loading-state" role="status">
+              <div className="spinner" aria-hidden="true" />
+              <p>Cargando preguntas frecuentes...</p>
+            </div>
+          ) : error ? (
+            <div className="error-state" role="alert">
+              <p>{error}</p>
+            </div>
+          ) : preguntas.length === 0 ? (
+            <p>No hay preguntas frecuentes disponibles en este momento.</p>
+          ) : (
+            preguntas.map((pregunta) => {
+              const estaAbierta = !!respuestasAbiertas[pregunta.id]
+              const idBoton = `faq-btn-${pregunta.id}`
+              const idPanel = `faq-panel-${pregunta.id}`
 
-            return (
-              <div key={pregunta.id} className={`faq-card-item ${estaAbierta ? 'expanded' : ''}`}>
-                <h2>
-                  <button
-                    type="button"
-                    id={idBoton}
-                    className="faq-toggle-btn"
-                    onClick={() => alternarRespuesta(pregunta.id)}
-                    aria-expanded={estaAbierta}
-                    aria-controls={idPanel}
+              return (
+                <div key={pregunta.id} className={`faq-card-item ${estaAbierta ? 'expanded' : ''}`}>
+                  <h2>
+                    <button
+                      type="button"
+                      id={idBoton}
+                      className="faq-toggle-btn"
+                      onClick={() => alternarRespuesta(pregunta.id)}
+                      aria-expanded={estaAbierta}
+                      aria-controls={idPanel}
+                    >
+                      <span className="faq-btn-text">{pregunta.pregunta}</span>
+                      <IconoPeriferico
+                        tipo="chevron-down"
+                        size={20}
+                        className={`faq-arrow-icon ${estaAbierta ? 'rotated' : ''}`}
+                      />
+                    </button>
+                  </h2>
+                  <div
+                    id={idPanel}
+                    role="region"
+                    aria-labelledby={idBoton}
+                    hidden={!estaAbierta}
+                    className="faq-body-pane"
                   >
-                    <span className="faq-btn-text">{pregunta.pregunta}</span>
-                    <IconoPeriferico
-                      tipo="chevron-down"
-                      size={20}
-                      className={`faq-arrow-icon ${estaAbierta ? 'rotated' : ''}`}
-                    />
-                  </button>
-                </h2>
-                <div
-                  id={idPanel}
-                  role="region"
-                  aria-labelledby={idBoton}
-                  hidden={!estaAbierta}
-                  className="faq-body-pane"
-                >
-                  <p>{pregunta.respuesta}</p>
+                    <p>{pregunta.respuesta}</p>
+                  </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })
+          )}
         </div>
 
         <aside className="faq-help-box">

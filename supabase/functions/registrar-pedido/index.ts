@@ -128,16 +128,17 @@ Deno.serve(async (req: Request) => {
     let costoEnvioBase = 5.00
 
     try {
-      const { data: configTienda } = await coreClient
+      const { data: configRows } = await coreClient
         .from("configuracion_tienda")
-        .select("*")
-        .limit(1)
-        .maybeSingle()
+        .select("clave, valor")
 
-      if (configTienda) {
-        if (configTienda.iva_porcentaje != null) ivaPorcentaje = Number(configTienda.iva_porcentaje) / (Number(configTienda.iva_porcentaje) > 1 ? 100 : 1)
-        if (configTienda.envio_gratis_desde != null) envioGratisDesde = Number(configTienda.envio_gratis_desde)
-        if (configTienda.costo_envio != null) costoEnvioBase = Number(configTienda.costo_envio)
+      if (Array.isArray(configRows)) {
+        for (const row of configRows) {
+          const val = typeof row.valor === "number" ? row.valor : Number(row.valor)
+          if (row.clave === "iva_porcentaje" && !isNaN(val)) ivaPorcentaje = val
+          if (row.clave === "envio_gratis_desde" && !isNaN(val)) envioGratisDesde = val
+          if (row.clave === "costo_envio" && !isNaN(val)) costoEnvioBase = val
+        }
       }
     } catch {
       // Usar defaults establecidos

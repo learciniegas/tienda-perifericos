@@ -4,10 +4,11 @@
  * Cumple con arquitectura MVS, diseño consistente con Pichincha como zona de despacho y accesibilidad universal.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useCatalogo } from '../../controlador/useCatalogo'
 import { useAutenticacion } from '../../controlador/useAuth'
+import { obtenerPreguntasFrecuentes } from '../../modelo/catalogoModelo'
 import { HeroBanner } from '../componentes/HeroBanner'
 import { TarjetasDestacadas } from '../componentes/AmazonFeatureCards'
 import { TarjetaProducto } from '../componentes/ProductCard'
@@ -18,26 +19,23 @@ export function PaginaInicio() {
   const { productos, cargando, error } = useCatalogo({ limite: 6 })
   const { usuario } = useAutenticacion()
   const [faqAbierto, setFaqAbierto] = useState(null)
+  const [preguntasFrecuentes, setPreguntasFrecuentes] = useState([])
+
+  useEffect(() => {
+    let activo = true
+    obtenerPreguntasFrecuentes()
+      .then((faqs) => {
+        if (activo) setPreguntasFrecuentes(faqs.slice(0, 3))
+      })
+      .catch(() => {})
+    return () => {
+      activo = false
+    }
+  }, [])
 
   const alternarPregunta = (indice) => {
     setFaqAbierto(anterior => (anterior === indice ? null : indice))
   }
-
-  // Preguntas frecuentes clave para la landing (HU-16)
-  const preguntasFrecuentes = [
-    {
-      pregunta: '¿Cómo realizar un pedido en la plataforma?',
-      respuesta: 'Puedes explorar nuestro catálogo y añadir cualquier periférico a tu carrito sin necesidad de iniciar sesión. Al proceder al pago, podrás registrarte o autenticarte, ingresar tus datos de facturación y tu dirección de entrega en la provincia de Pichincha.'
-    },
-    {
-      pregunta: '¿Cuáles son los tiempos de entrega en Pichincha?',
-      respuesta: 'Nuestros envíos se gestionan de forma directa en Quito, los valles y todos los cantones de la provincia de Pichincha, con tiempos de entrega de 24 a 48 horas hábiles.'
-    },
-    {
-      pregunta: '¿Cómo puedo rastrear mi pedido una vez completada la compra?',
-      respuesta: 'Al finalizar tu compra se te generará un código único de orden (ej. #ORD-1001). Con este código puedes ingresar a la sección de "Seguimiento" en el menú superior para verificar el estado de preparación y despacho de tus periféricos.'
-    }
-  ]
 
   return (
     <div className="landing-page-wrapper">
@@ -87,19 +85,19 @@ export function PaginaInicio() {
           )}
         </section>
 
-        {/* 4. Banner de Ofertas */}
+        {/* 4. Banner Destacado */}
         <section className="deals-banner-section" aria-labelledby="deals-heading">
           <div className="deals-banner-card">
             <div className="deals-content">
-              <span className="deal-tag">Oferta del Día</span>
+              <span className="deal-tag">Catálogo Exclusivo</span>
               <h2 id="deals-heading" className="deal-title">
-                Hasta un 25% de descuento en periféricos seleccionados
+                Periféricos de Alto Rendimiento para Gamers y Profesionales
               </h2>
               <p className="deal-text">
-                Marcas líderes: Logitech, Corsair, Razer y Redragon.
+                Marcas líderes: Logitech, Corsair, Razer y Redragon con 12 meses de garantía directa.
               </p>
               <Link to="/catalogo" className="btn-primary deal-cta">
-                Ver periféricos en oferta
+                Explorar catálogo completo
               </Link>
             </div>
             <div className="deals-visual" aria-hidden="true">
