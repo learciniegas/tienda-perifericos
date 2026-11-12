@@ -30,7 +30,7 @@ export function PaginaProductoDetalle() {
   const [resenasData, setResenasData] = useState({
     lista: [],
     total: 0,
-    promedio: 5.0,
+    promedio: 0,
     distribucion: {},
     porcentajes: {}
   })
@@ -51,7 +51,10 @@ export function PaginaProductoDetalle() {
   useEffect(() => {
     let activo = true
     if (usuario?.autenticado && usuario?.id && id) {
-      verificarCompraUsuario(id, usuario.id)
+      queueMicrotask(() => {
+        if (activo) setVerificandoCompra(true)
+      })
+      verificarCompraUsuario(id)
         .then((compro) => {
           if (!activo) return
           setComproProducto(compro)
@@ -62,6 +65,13 @@ export function PaginaProductoDetalle() {
           setComproProducto(false)
           setVerificandoCompra(false)
         })
+    } else {
+      queueMicrotask(() => {
+        if (activo) {
+          setComproProducto(false)
+          setVerificandoCompra(false)
+        }
+      })
     }
 
     return () => {
@@ -142,11 +152,9 @@ export function PaginaProductoDetalle() {
       await guardarResenaProducto({
         productoId: id,
         calificacion: nuevaCalif,
-        titulo: nuevoTitulo.trim() || 'Opinión de compra',
+        titulo: nuevoTitulo.trim() || undefined,
         comentario: nuevoComentario.trim(),
-        nombreAutor: nuevoNombre.trim() || (usuario?.nombre !== 'Invitado' ? usuario.nombre : 'Cliente Verificado'),
-        ciudad: nuevaCiudad.trim() || 'Quito, Pichincha',
-        usuarioId: usuario?.id
+        ciudad: nuevaCiudad.trim() || undefined
       })
 
       const datosActualizados = await obtenerResenasProducto(id)
@@ -286,20 +294,26 @@ export function PaginaProductoDetalle() {
           <h1 className="detail-title">{producto.nombre}</h1>
 
           {/* Calificación y reseñas */}
-          <div
-            className="detail-rating-row"
-            role="group"
-            aria-label={`Calificación ${resenasData.promedio} de 5 estrellas basado en ${resenasData.total} opiniones verificadas`}
-          >
-            <div className="stars-group" aria-hidden="true">
-              {'★'.repeat(Math.min(5, Math.max(1, Math.round(resenasData.promedio)))) +
-                '☆'.repeat(5 - Math.min(5, Math.max(1, Math.round(resenasData.promedio))))}
+          {resenasData.total > 0 ? (
+            <div
+              className="detail-rating-row"
+              role="group"
+              aria-label={`Calificación ${resenasData.promedio} de 5 estrellas basado en ${resenasData.total} opiniones verificadas`}
+            >
+              <div className="stars-group" aria-hidden="true">
+                {'★'.repeat(Math.min(5, Math.max(1, Math.round(resenasData.promedio)))) +
+                  '☆'.repeat(5 - Math.min(5, Math.max(1, Math.round(resenasData.promedio))))}
+              </div>
+              <span className="rating-score">{resenasData.promedio}</span>
+              <a href="#resenas" className="reviews-count-link">
+                ({resenasData.total} {resenasData.total === 1 ? 'opinión verificada' : 'opiniones verificadas'})
+              </a>
             </div>
-            <span className="rating-score">{resenasData.promedio}</span>
-            <a href="#resenas" className="reviews-count-link">
-              ({resenasData.total} {resenasData.total === 1 ? 'opinión verificada' : 'opiniones verificadas'})
-            </a>
-          </div>
+          ) : (
+            <div className="detail-rating-row" role="group" aria-label="Sin opiniones aún">
+              <span className="rating-score-empty">Sin opiniones</span>
+            </div>
+          )}
 
           <hr className="detail-divider" />
 
@@ -451,18 +465,27 @@ export function PaginaProductoDetalle() {
           <div className="reviews-metrics-card">
             <h3 className="metrics-title">Calificación general</h3>
             
-            <div className="overall-score-display">
-              <span className="score-big">{resenasData.promedio}</span>
-              <div className="score-details">
-                <div className="stars-group score-stars" aria-hidden="true">
-                  {'★'.repeat(Math.min(5, Math.max(1, Math.round(resenasData.promedio)))) +
-                    '☆'.repeat(5 - Math.min(5, Math.max(1, Math.round(resenasData.promedio))))}
+            {resenasData.total > 0 ? (
+              <div className="overall-score-display">
+                <span className="score-big">{resenasData.promedio}</span>
+                <div className="score-details">
+                  <div className="stars-group score-stars" aria-hidden="true">
+                    {'★'.repeat(Math.min(5, Math.max(1, Math.round(resenasData.promedio)))) +
+                      '☆'.repeat(5 - Math.min(5, Math.max(1, Math.round(resenasData.promedio))))}
+                  </div>
+                  <span className="score-total-count">
+                    {resenasData.total} {resenasData.total === 1 ? 'opinión verificada' : 'opiniones verificadas'}
+                  </span>
                 </div>
-                <span className="score-total-count">
-                  {resenasData.total} {resenasData.total === 1 ? 'opinión verificada' : 'opiniones verificadas'}
-                </span>
               </div>
-            </div>
+            ) : (
+              <div className="overall-score-display">
+                <span className="score-big">-</span>
+                <div className="score-details">
+                  <span className="score-total-count">Sin opiniones</span>
+                </div>
+              </div>
+            )}
 
             {/* Barras de distribución de estrellas */}
             <div className="rating-bars-list" role="group" aria-label="Distribución de estrellas de valoración">
@@ -504,7 +527,9 @@ export function PaginaProductoDetalle() {
                   </Link>
                 </div>
               ) : verificandoCompra ? (
-                <p className="write-callout-text">Verificando historial de compra en Pichincha...</p>
+                <div className="loading-state-inline" role="status" aria-live="polite">
+                  <p className="write-callout-text">⏳ Verificando historial de compras...</p>
+                </div>
               ) : !comproProducto ? (
                 <div className="review-auth-prompt">
                   <p className="write-callout-text">

@@ -73,6 +73,7 @@ export function PaginaCuenta() {
   const [comentarioResena, setComentarioResena] = useState('')
   const [guardandoResena, setGuardandoResena] = useState(false)
   const [mensajeResenaExito, setMensajeResenaExito] = useState('')
+  const [errorResena, setErrorResena] = useState('')
 
   useEffect(() => {
     let activo = true
@@ -253,15 +254,14 @@ export function PaginaCuenta() {
     if (!productoParaCalificar) return
 
     setGuardandoResena(true)
+    setErrorResena('')
     try {
       await guardarResenaProducto({
         productoId: productoParaCalificar.id || productoParaCalificar.producto_id,
         calificacion: calificacionEstrellas,
-        titulo: tituloResena.trim() || 'Opinión de compra verificada',
-        comentario: comentarioResena.trim() || 'Excelente periférico y entrega rápida en Quito.',
-        nombreAutor: usuario?.nombre || 'Comprador Verificado',
-        ciudad: 'Quito, Pichincha',
-        usuarioId: usuario?.id
+        titulo: tituloResena.trim() || undefined,
+        comentario: comentarioResena.trim() || undefined,
+        ciudad: 'Quito, Pichincha'
       })
 
       setMensajeResenaExito(`✓ ¡Muchas gracias! Tu valoración para ${productoParaCalificar.nombre} ha sido guardada.`)
@@ -274,6 +274,7 @@ export function PaginaCuenta() {
       }, 2500)
     } catch (err) {
       console.warn('Error al guardar reseña:', err)
+      setErrorResena(err.message || 'No se pudo guardar la reseña. Inténtalo de nuevo.')
     } finally {
       setGuardandoResena(false)
     }
@@ -927,6 +928,13 @@ export function PaginaCuenta() {
                 ✕
               </button>
             </div>
+
+            {errorResena && (
+              <div className="auth-alert auth-alert-error mt-4" role="alert" aria-live="assertive">
+                <span className="alert-icon" aria-hidden="true">⚠️</span>
+                <p>{errorResena}</p>
+              </div>
+            )}
 
             {mensajeResenaExito ? (
               <div className="auth-alert auth-alert-success mt-4" role="status" aria-live="polite">
