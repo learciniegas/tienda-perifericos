@@ -19,7 +19,6 @@ export function PaginaSeguimiento() {
   const [numeroOrden, setNumeroOrden] = useState(codigoUrl)
   const [cargando, setCargando] = useState(() => Boolean(usuario?.autenticado && usuario?.id))
   const [error, setError] = useState('')
-  const [segundosRestantes, setSegundosRestantes] = useState(0)
 
   // Cargar pedido por URL o el pedido más reciente del usuario autenticado
   useEffect(() => {
@@ -71,30 +70,26 @@ export function PaginaSeguimiento() {
     }
   }, [codigoUrl, usuario])
 
-  // Temporizador para actualización visual de fases automáticas cada 2 minutos
+  // Polling automático para sincronizar cambios de estado realizados por el servidor (pg_cron)
   useEffect(() => {
-    if (!pedidoConsultado || pedidoConsultado.estadoActual === 'Entregado') {
+    if (!pedidoConsultado || (pedidoConsultado.estadoId && pedidoConsultado.estadoId >= 4)) {
       return
     }
 
     const intervalo = setInterval(async () => {
-      const restantes = CheckoutModelo.obtenerTiempoRestanteSiguienteEstado(pedidoConsultado.fechaIso)
-      setSegundosRestantes(restantes)
-
-      if (restantes <= 0 && usuario?.id) {
+      if (!usuario?.id || !pedidoConsultado?.codigo) return
+      try {
         const actualizado = await CheckoutModelo.consultarPedidoPorCodigo(pedidoConsultado.codigo, usuario.id)
-        if (actualizado && actualizado.estadoActual !== pedidoConsultado.estadoActual) {
+        if (actualizado && actualizado.estadoId !== pedidoConsultado.estadoId) {
           setPedidoConsultado(actualizado)
         }
+      } catch {
+        // Ignorar fallos temporales de red en el polling
       }
-    }, 1000)
+    }, 10000)
 
     return () => clearInterval(intervalo)
   }, [pedidoConsultado, usuario])
-
-  const segundosEfectivos = segundosRestantes > 0
-    ? segundosRestantes
-    : (pedidoConsultado ? CheckoutModelo.obtenerTiempoRestanteSiguienteEstado(pedidoConsultado.fechaIso) : 0)
 
   // Consulta manual mediante el formulario
   const manejarEnvio = async (evento) => {
@@ -211,23 +206,18 @@ export function PaginaSeguimiento() {
                 <p className="order-result-date">
                   Registrado el {pedidoConsultado.fecha} a las {pedidoConsultado.hora}
                 </p>
-                {pedidoConsultado.estadoActual !== 'Entregado' && segundosEfectivos > 0 ? (
-                  <div className="tracking-timer-pill" role="status">
-                    <span className="timer-icon" aria-hidden="true">⏱️</span>
-                    <span>
-                      Próxima fase en:{' '}
-                      <strong>
-                        {Math.floor(segundosEfectivos / 60)}:
-                        {String(segundosEfectivos % 60).padStart(2, '0')}
-                      </strong>{' '}
-                      min (Fases logísticas de 2 minutos)
-                    </span>
-                  </div>
-                ) : pedidoConsultado.estadoActual === 'Entregado' ? (
+                {pedidoConsultado.estadoId && pedidoConsultado.estadoId >= 4 ? (
                   <div className="tracking-timer-pill delivered-pill" role="status">
                     <span>✓ Pedido entregado en domicilio</span>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="tracking-timer-pill" role="status">
+                    <span className="timer-icon" aria-hidden="true">🚚</span>
+                    <span>
+                      Estado actual: <strong>{pedidoConsultado.estadoActual}</strong> (Actualizado automáticamente por el servidor)
+                    </span>
+                  </div>
+                )}
               </div>
               <span className={`status-pill ${pedidoConsultado.estadoActual === 'Entregado' ? 'status-delivered' : 'status-in-progress'}`}>
                 {pedidoConsultado.estadoActual}

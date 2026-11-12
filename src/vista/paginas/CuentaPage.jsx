@@ -281,12 +281,12 @@ export function PaginaCuenta() {
 
   // --- Filtros de Historial de Pedidos ---
   const pedidosFiltrados = historialPedidos.filter((pedido) => {
-    // Filtro por estado
+    // Filtro por estado usando estadoId numérico real de la base de datos
     if (filtroEstado !== 'todos') {
-      const estado = pedido.estadoActual?.toLowerCase() || ''
-      if (filtroEstado === 'preparacion' && !estado.includes('preparación') && !estado.includes('preparacion')) return false
-      if (filtroEstado === 'camino' && !estado.includes('camino') && !estado.includes('despachado')) return false
-      if (filtroEstado === 'entregado' && !estado.includes('entregado')) return false
+      const estadoId = Number(pedido.estadoId)
+      if (filtroEstado === 'preparacion' && estadoId !== 2) return false
+      if (filtroEstado === 'camino' && estadoId !== 3) return false
+      if (filtroEstado === 'entregado' && estadoId !== 4) return false
     }
     // Filtro por texto
     if (busquedaPedido.trim()) {

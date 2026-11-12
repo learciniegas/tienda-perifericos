@@ -5,7 +5,7 @@
  * Preparado para entorno de producción sin cuentas sembradas.
  */
 
-import { supabaseCore, supabaseTx } from '../config/supabaseClient'
+import { supabaseCore } from '../config/supabaseClient'
 
 export const SECTORES_QUITO = [
   'La Carolina / Iñaquito',
@@ -23,50 +23,66 @@ export const SECTORES_QUITO = [
 const CLAVE_DIRECCIONES_LOCAL = 'tienda_perifericos_direcciones_v1'
 const CLAVE_FISCALES_LOCAL = 'tienda_perifericos_fiscales_v1'
 
-// Duración de cada fase del pedido: 2 minutos (120,000 milisegundos)
-export const INTERVALO_ESTADO_MS = 2 * 60 * 1000
+/**
+ * Invoca de forma segura una Edge Function en Supabase TX enviando el JWT de sesión de Core.
+ */
+async function invocarFuncionTx(nombreFuncion, { metodo = 'POST', cuerpo = null, params = null } = {}) {
+  const { data: { session } } = await supabaseCore.auth.getSession()
+  const token = session?.access_token
+
+  if (!token) {
+    throw new Error('Se requiere una sesión activa para realizar esta operación.')
+  }
+
+  const txUrl = import.meta.env.VITE_TX_SUPABASE_URL || 'https://zxqmpylxvxnktqthvigl.supabase.co'
+  const txAnonKey = import.meta.env.VITE_TX_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4cW1weWx4dnhua3RxdGh2aWdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM1NTYyNzMsImV4cCI6MjEwOTEzMjI3M30.l5RHs2O6dH5tXFhhzswlnnFPVc7lMD00-JNtNAsK4n4'
+
+  let url = `${txUrl}/functions/v1/${nombreFuncion}`
+  if (params) {
+    const q = new URLSearchParams(params).toString()
+    url += `?${q}`
+  }
+
+  const opciones = {
+    method: metodo,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'apikey': txAnonKey
+    }
+  }
+
+  if (cuerpo && metodo !== 'GET') {
+    opciones.body = JSON.stringify(cuerpo)
+  }
+
+  let respuesta
+  try {
+    respuesta = await fetch(url, opciones)
+  } catch (err) {
+    throw new Error('Error de conexión con el servicio transaccional: ' + (err.message || 'Fallo de red'))
+  }
+
+  const resultado = await respuesta.json().catch(() => ({}))
+
+  if (!respuesta.ok) {
+    throw new Error(resultado?.error || `Error ${respuesta.status} en la operación.`)
+  }
+
+  return resultado
+}
+
+export function construirPasosSeguimiento(estadoId = 2) {
+  const idNum = Number(estadoId) || 2
+  return [
+    { nombre: 'Pago Confirmado', completado: idNum >= 1, activo: idNum === 1, fecha: 'Procesado' },
+    { nombre: 'En preparación', completado: idNum >= 2, activo: idNum === 2, fecha: 'Almacén central Quito' },
+    { nombre: 'En camino (Quito)', completado: idNum >= 3, activo: idNum === 3, fecha: 'En ruta de entrega' },
+    { nombre: 'Entregado', completado: idNum >= 4, activo: idNum === 4, fecha: 'Entregado en destino' }
+  ]
+}
 
 export const CheckoutModelo = {
-  /**
-   * Calcula el estado que corresponde al pedido según el tiempo transcurrido (2 min por estado).
-   * Fase 2: En preparación (0 a 2 min)
-   * Fase 3: En camino (Quito) (2 a 4 min)
-   * Fase 4: Entregado (>= 4 min)
-   */
-  determinarEstadoSegunTiempo(fechaIso, estadoActualId = 2) {
-    if (!fechaIso) return Number(estadoActualId) || 2
-    const creacion = new Date(fechaIso).getTime()
-    if (isNaN(creacion)) return Number(estadoActualId) || 2
-
-    const transcurrido = Date.now() - creacion
-    let estadoSegunTiempo = 2 // En preparación por defecto
-
-    if (transcurrido >= INTERVALO_ESTADO_MS * 2) {
-      estadoSegunTiempo = 4 // Entregado (4 minutos o más)
-    } else if (transcurrido >= INTERVALO_ESTADO_MS) {
-      estadoSegunTiempo = 3 // En camino (2 a 4 minutos)
-    }
-
-    return Math.max(Number(estadoActualId) || 2, estadoSegunTiempo)
-  },
-
-  /**
-   * Calcula los segundos restantes para la siguiente fase del pedido.
-   */
-  obtenerTiempoRestanteSiguienteEstado(fechaIso) {
-    if (!fechaIso) return 0
-    const creacion = new Date(fechaIso).getTime()
-    if (isNaN(creacion)) return 0
-
-    const transcurrido = Date.now() - creacion
-    if (transcurrido < INTERVALO_ESTADO_MS) {
-      return Math.max(0, Math.ceil((INTERVALO_ESTADO_MS - transcurrido) / 1000))
-    }
-    if (transcurrido < INTERVALO_ESTADO_MS * 2) {
-      return Math.max(0, Math.ceil((INTERVALO_ESTADO_MS * 2 - transcurrido) / 1000))
-    }
-    return 0 // Pedido completado (Entregado)
-  },
 
   obtenerClaveDirecciones(usuario) {
     return usuario?.id ? `${CLAVE_DIRECCIONES_LOCAL}_${usuario.id}` : CLAVE_DIRECCIONES_LOCAL
@@ -344,7 +360,7 @@ export const CheckoutModelo = {
 
   /**
    * Procesa la compra transaccional garantizando ACID y stock (HU-08 / HU-14).
-   * Llama a la función RPC registrar_pedido en Supabase TX o contingencia local segura.
+   * Llama a la Edge Function registrar-pedido en Supabase TX con el JWT de Core.
    */
   async procesarPedidoTransaccional({
     usuario,
@@ -354,74 +370,58 @@ export const CheckoutModelo = {
     totales,
     datosPago
   }) {
+    if (!usuario?.autenticado || !usuario?.id) {
+      throw new Error('Debes iniciar sesión con tu cuenta para completar la compra.')
+    }
+
     if (!articulosComprados || articulosComprados.length === 0) {
       throw new Error('No hay artículos seleccionados para comprar.')
     }
 
-    const claveIdempotencia = 'IDEMP-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9)
-    const referenciaTransaccion = 'TX-' + Math.floor(100000 + Math.random() * 900000)
+    if (!direccion || !direccion.calle_principal || !direccion.numeracion) {
+      throw new Error('Por favor completa todos los campos requeridos en la dirección de entrega.')
+    }
 
-    const itemsPayload = articulosComprados.map(item => ({
-      producto_id: Number(item.id),
-      nombre: item.nombre,
-      precio_unitario: Number(item.precio),
-      cantidad: Number(item.cantidad)
-    }))
+    if (!fiscal || !fiscal.identificacion_fiscal || !fiscal.razon_social) {
+      throw new Error('Por favor completa los datos de facturación (identificación y razón social).')
+    }
 
-    const correoCliente = usuario?.email || `${fiscal.identificacion_fiscal}@cliente.com`
-
-    const payloadRPC = {
-      clave_idempotencia: claveIdempotencia,
-      usuario_id: (usuario?.id && usuario.id.includes('-') && usuario.id.length === 36)
-        ? usuario.id
-        : 'a0000000-0000-0000-0000-000000000001',
-      correo_contacto: correoCliente,
+    const payloadPeticion = {
+      clave_idempotencia: 'IDEMP-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
+      items: articulosComprados.map(item => ({
+        producto_id: Number(item.id),
+        cantidad: Number(item.cantidad)
+      })),
+      direccion: {
+        sector: direccion.sector || SECTORES_QUITO[0],
+        calle_principal: direccion.calle_principal,
+        numeracion: direccion.numeracion,
+        referencia: direccion.referencia || ''
+      },
       fiscal: {
+        tipo: fiscal.tipo || 'cedula',
         identificacion: fiscal.identificacion_fiscal,
         razon_social: fiscal.razon_social,
         direccion: fiscal.direccion_fiscal || `${direccion.calle_principal}, Quito`
       },
-      envio: {
-        calle_principal: direccion.calle_principal,
-        numeracion: direccion.numeracion,
-        ciudad: `Quito (${direccion.sector})`,
-        referencia: direccion.referencia || ''
-      },
-      items: itemsPayload,
-      impuestos: totales.impuestos,
-      costo_envio: totales.envio,
-      referencia_transaccion: referenciaTransaccion
+      metodo: 'tarjeta',
+      referencia_transaccion: 'TX-' + Math.floor(100000 + Math.random() * 900000)
     }
 
-    let numeroPedidoConfirmado = null
-    let transaccionRemotaExitosa = false
+    // Llamada a la Edge Function en Supabase TX (valida token, precios en Core, stock y registra pedido)
+    const respuesta = await invocarFuncionTx('registrar-pedido', {
+      metodo: 'POST',
+      cuerpo: payloadPeticion
+    })
 
-    // Intento transaccional con Supabase TX
-    if (supabaseTx) {
-      try {
-        const { data, error } = await supabaseTx.rpc('registrar_pedido', { p: payloadRPC })
-        if (error) {
-          console.warn('Respuesta de error en RPC registrar_pedido:', error.message)
-          if (error.message.includes('stock_insuficiente')) {
-            const idInsuficiente = error.message.split(':')[1] || ''
-            throw new Error(`Stock insuficiente para el producto #${idInsuficiente}. Por favor ajusta la cantidad.`)
-          }
-        } else if (data) {
-          numeroPedidoConfirmado = data
-          transaccionRemotaExitosa = true
-        }
-      } catch (err) {
-        if (err.message?.includes('Stock insuficiente') || err.message?.includes('stock_insuficiente')) {
-          throw err
-        }
-        console.warn('Fallo al ejecutar transacción en Supabase TX, ejecutando contingencia local segura:', err)
-      }
+    const pedidoBD = respuesta.pedido
+    const codigoOrden = respuesta.codigo || pedidoBD?.numero_pedido
+
+    if (!codigoOrden) {
+      throw new Error('La base de datos no devolvió un código de orden válido.')
     }
 
-    // Código de orden oficial
-    const codigoOrden = numeroPedidoConfirmado || 'ORD-' + Math.floor(100000 + Math.random() * 900000)
-
-    const fechaCreacion = new Date()
+    const fechaCreacion = pedidoBD?.creado_en ? new Date(pedidoBD.creado_en) : new Date()
     const fechaFormateada = fechaCreacion.toLocaleDateString('es-EC', {
       day: '2-digit',
       month: 'long',
@@ -432,26 +432,35 @@ export const CheckoutModelo = {
       minute: '2-digit'
     })
 
-    // Construcción del comprobante completo de venta
+    const articulosConfirmados = (pedidoBD?.detalles_pedido || []).map(art => ({
+      id: art.producto_id,
+      nombre: art.nombre_producto,
+      categoria: 'Periférico',
+      precio: Number(art.precio_unitario),
+      cantidad: Number(art.cantidad),
+      subtotal: Number(art.subtotal_linea)
+    }))
+
     const comprobantePedido = {
       codigo: codigoOrden,
       fecha: fechaFormateada,
       hora: horaFormateada,
       fechaIso: fechaCreacion.toISOString(),
-      estadoActual: 'En preparación',
-      transaccionRemota: transaccionRemotaExitosa,
-      referenciaPago: referenciaTransaccion,
-      ultimosDigitosTarjeta: String(datosPago.numeroTarjeta || '4242').replace(/\D/g, '').slice(-4),
-      marcaTarjeta: datosPago.marca || 'Visa',
+      estadoActual: pedidoBD?.estados_pedido?.nombre || 'En preparación',
+      estadoId: pedidoBD?.estado_id || 2,
+      transaccionRemota: true,
+      referenciaPago: payloadPeticion.referencia_transaccion,
+      ultimosDigitosTarjeta: String(datosPago?.numeroTarjeta || '4242').replace(/\D/g, '').slice(-4),
+      marcaTarjeta: datosPago?.marca || 'Visa',
       cliente: {
-        nombre: usuario?.nombre || fiscal.razon_social,
-        correo: correoCliente
+        nombre: fiscal.razon_social,
+        correo: pedidoBD?.correo_contacto || usuario.email
       },
       datosFiscales: {
         tipo: fiscal.tipo === 'ruc' ? 'RUC' : 'Cédula de Identidad',
         identificacion: fiscal.identificacion_fiscal,
         razonSocial: fiscal.razon_social,
-        direccionFiscal: fiscal.direccion_fiscal || 'Quito, Pichincha'
+        direccionFiscal: fiscal.direccion_fiscal || `${direccion.calle_principal}, Quito`
       },
       direccionEnvio: {
         ciudad: 'Quito, Pichincha',
@@ -460,92 +469,53 @@ export const CheckoutModelo = {
         numeracion: direccion.numeracion,
         referencia: direccion.referencia || 'Sin referencia adicional'
       },
-      articulos: articulosComprados.map(art => ({
+      articulos: articulosConfirmados.length > 0 ? articulosConfirmados : articulosComprados.map(art => ({
         id: art.id,
         nombre: art.nombre,
-        categoria: art.categoria,
-        precio: art.precio,
-        cantidad: art.cantidad,
-        subtotal: +(art.precio * art.cantidad).toFixed(2),
-        imagen_url: art.imagen_url
+        categoria: art.categoria || 'Periférico',
+        precio: Number(art.precio),
+        cantidad: Number(art.cantidad),
+        subtotal: +(Number(art.precio) * Number(art.cantidad)).toFixed(2)
       })),
       totales: {
-        cantidadTotal: articulosComprados.reduce((acc, a) => acc + a.cantidad, 0),
-        subtotal: totales.subtotal,
-        envio: totales.envio,
-        impuestos: totales.impuestos,
-        total: totales.total
+        cantidadTotal: (pedidoBD?.detalles_pedido || articulosComprados).reduce((acc, a) => acc + Number(a.cantidad), 0),
+        subtotal: Number(pedidoBD?.subtotal ?? totales.subtotal),
+        envio: Number(pedidoBD?.costo_envio ?? totales.envio),
+        impuestos: Number(pedidoBD?.impuestos ?? totales.impuestos),
+        total: Number(pedidoBD?.total ?? totales.total)
       },
-      pasosSeguimiento: [
-        { nombre: 'Pago Confirmado', completado: true, activo: false, fecha: `${fechaFormateada}, ${horaFormateada}` },
-        { nombre: 'En preparación', completado: true, activo: true, fecha: 'Almacén central Quito' },
-        { nombre: 'En camino (Quito)', completado: false, activo: false, fecha: 'Estimado en 24h' },
-        { nombre: 'Entregado', completado: false, activo: false, fecha: `Domicilio: ${direccion.sector}` }
-      ]
+      pasosSeguimiento: construirPasosSeguimiento(pedidoBD?.estado_id || 2)
     }
 
-    // Retornar el comprobante generado sin almacenar pedidos en localStorage
     return comprobantePedido
   },
 
   /**
-   * Obtiene el historial de pedidos generados por el cliente desde la base de datos (Supabase TX).
+   * Obtiene el historial de pedidos generados por el cliente desde la Edge Function en Supabase TX.
    * La base de datos es la única fuente de verdad (HU-15).
-   * @param {string} usuarioId
-   * @returns {Promise<Array>}
    */
   async obtenerHistorialPedidos(usuarioId) {
-    if (!usuarioId || !supabaseTx) return []
-    if (typeof usuarioId !== 'string' || usuarioId.length !== 36 || !usuarioId.includes('-')) {
-      return []
-    }
+    if (!usuarioId) return []
 
     try {
-      const { data: pedidosBD, error } = await supabaseTx
-        .from('pedidos')
-        .select(`
-          id,
-          numero_pedido,
-          usuario_id,
-          correo_contacto,
-          total,
-          subtotal,
-          impuestos,
-          costo_envio,
-          envio_calle_principal,
-          envio_numeracion,
-          envio_ciudad,
-          envio_referencia,
-          fiscal_identificacion,
-          fiscal_razon_social,
-          creado_en,
-          estado_id,
-          estados_pedido ( nombre, orden ),
-          detalles_pedido ( producto_id, nombre_producto, precio_unitario, cantidad, subtotal_linea )
-        `)
-        .eq('usuario_id', usuarioId)
-        .order('creado_en', { ascending: false })
+      const data = await invocarFuncionTx('mis-pedidos', { metodo: 'GET' })
+      const pedidosBD = data?.pedidos || []
 
-      if (error) {
-        console.warn('Aviso al consultar historial en Supabase TX:', error.message)
-        return []
-      }
-
-      return (pedidosBD || []).map((pedidoBD) => {
-        const ordenEstado = pedidoBD.estados_pedido?.orden || pedidoBD.estado_id || 2
-        const nombres = { 1: 'Pagado', 2: 'En preparación', 3: 'En camino (Quito)', 4: 'Entregado' }
-        const nombreEstado = nombres[ordenEstado] || pedidoBD.estados_pedido?.nombre || 'En preparación'
+      return pedidosBD.map((pedidoBD) => {
+        const idEstado = Number(pedidoBD.estado_id) || 2
+        const nombreEstado = pedidoBD.estados_pedido?.nombre || (idEstado === 3 ? 'En camino (Quito)' : (idEstado === 4 ? 'Entregado' : 'En preparación'))
 
         return {
+          id: pedidoBD.id,
           codigo: pedidoBD.numero_pedido,
           fecha: new Date(pedidoBD.creado_en).toLocaleDateString('es-EC', { day: '2-digit', month: 'short', year: 'numeric' }),
           hora: new Date(pedidoBD.creado_en).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }),
           fechaIso: pedidoBD.creado_en,
           estadoActual: nombreEstado,
-          estadoId: ordenEstado,
+          estadoId: idEstado,
           cliente: {
             nombre: pedidoBD.fiscal_razon_social,
-            correo: pedidoBD.correo_contacto || 'cliente@perifericosquito.com'
+            correo: pedidoBD.correo_contacto
           },
           direccionEnvio: {
             ciudad: pedidoBD.envio_ciudad || 'Quito, Pichincha',
@@ -556,7 +526,8 @@ export const CheckoutModelo = {
           },
           datosFiscales: {
             identificacion: pedidoBD.fiscal_identificacion,
-            razonSocial: pedidoBD.fiscal_razon_social
+            razonSocial: pedidoBD.fiscal_razon_social,
+            direccionFiscal: pedidoBD.fiscal_direccion
           },
           totales: {
             subtotal: Number(pedidoBD.subtotal),
@@ -571,219 +542,77 @@ export const CheckoutModelo = {
             cantidad: d.cantidad,
             subtotal: Number(d.subtotal_linea)
           })),
-          pasosSeguimiento: [
-            { nombre: 'Pago Confirmado', completado: ordenEstado >= 1, activo: ordenEstado === 1, fecha: 'Procesado' },
-            { nombre: 'En preparación', completado: ordenEstado >= 2, activo: ordenEstado === 2, fecha: 'Almacén Quito' },
-            { nombre: 'En camino (Quito)', completado: ordenEstado >= 3, activo: ordenEstado === 3, fecha: 'Distribución' },
-            { nombre: 'Entregado', completado: ordenEstado >= 4, activo: ordenEstado === 4, fecha: 'Destino final' }
-          ]
+          pasosSeguimiento: construirPasosSeguimiento(idEstado)
         }
       })
     } catch (err) {
-      console.warn('Error al recuperar historial de pedidos:', err)
+      console.warn('Aviso al consultar historial en Supabase TX:', err.message)
       return []
     }
   },
 
   /**
-   * Actualiza el estado de un pedido (HU-15: Pagado, En preparación, Enviado, Entregado).
-   * Notifica por correo electrónico oficial cuando pasa a 'Entregado'.
-   */
-  async actualizarEstadoPedido(codigoPedido, nuevoEstadoId) {
-    if (!codigoPedido || !nuevoEstadoId) return null
-    const codigoLimpio = String(codigoPedido).trim().toUpperCase().replace('#', '')
-    const idNum = Number(nuevoEstadoId)
-    const fechaActual = new Date().toISOString()
-
-    const nombresEstados = {
-      1: 'Pagado',
-      2: 'En preparación',
-      3: 'En camino (Quito)',
-      4: 'Entregado'
-    }
-    const nombreEstado = nombresEstados[idNum] || 'En preparación'
-
-    // Actualizar en Supabase TX si está disponible
-    if (supabaseTx) {
-      try {
-        const { data: pedido, error: errBusq } = await supabaseTx
-          .from('pedidos')
-          .select('id')
-          .eq('numero_pedido', codigoLimpio)
-          .maybeSingle()
-
-        if (!errBusq && pedido?.id) {
-          await supabaseTx
-            .from('pedidos')
-            .update({ estado_id: idNum })
-            .eq('id', pedido.id)
-
-          await supabaseTx
-            .from('historial_estados_pedido')
-            .insert({
-              pedido_id: pedido.id,
-              estado_id: idNum,
-              correo_notificado_en: fechaActual
-            })
-        }
-      } catch (err) {
-        console.warn('Aviso al actualizar estado en Supabase TX:', err)
-      }
-    }
-
-    // Actualizar en almacenamiento local
-    try {
-      const historial = this.obtenerHistorialPedidos()
-      const actualizado = historial.map(p => {
-        if (p.codigo?.toUpperCase() === codigoLimpio) {
-          const pasos = (p.pasosSeguimiento || []).map((paso, idx) => {
-            const stepOrder = idx + 1
-            return {
-              ...paso,
-              completado: stepOrder <= idNum,
-              activo: stepOrder === idNum
-            }
-          })
-          return {
-            ...p,
-            estadoActual: nombreEstado,
-            correoNotificadoEn: fechaActual,
-            pasosSeguimiento: pasos
-          }
-        }
-        return p
-      })
-      this.guardarHistorialPedidos(actualizado)
-
-      // Actualizar también último pedido si coincide
-      const ultimo = JSON.parse(localStorage.getItem('ultimo_pedido_generado') || '{}')
-      if (ultimo.codigo?.toUpperCase() === codigoLimpio) {
-        ultimo.estadoActual = nombreEstado
-        ultimo.correoNotificadoEn = fechaActual
-        ultimo.pasosSeguimiento = (ultimo.pasosSeguimiento || []).map((paso, idx) => ({
-          ...paso,
-          completado: (idx + 1) <= idNum,
-          activo: (idx + 1) === idNum
-        }))
-        localStorage.setItem('ultimo_pedido_generado', JSON.stringify(ultimo))
-      }
-    } catch (e) {
-      console.warn('Error al persistir actualización local:', e)
-    }
-
-    return this.consultarPedidoPorCodigo(codigoLimpio)
-  },
-
-  /**
-   * Consulta un pedido por su número de orden en Supabase TX (HU-15).
+   * Consulta un pedido por su código a través de la Edge Function en Supabase TX.
    * La base de datos es la única fuente de verdad.
-   * Si se especifica usuarioId, verifica que el pedido pertenezca a dicho usuario.
-   * @param {string} codigo
-   * @param {string|null} usuarioId
-   * @returns {Promise<Object|null>}
    */
-  async consultarPedidoPorCodigo(codigo, usuarioId = null) {
+  async consultarPedidoPorCodigo(codigo) {
     if (!codigo) return null
     const codigoLimpio = String(codigo).trim().toUpperCase().replace('#', '')
 
-    if (supabaseTx) {
-      try {
-        let consulta = supabaseTx
-          .from('pedidos')
-          .select(`
-            id,
-            numero_pedido,
-            usuario_id,
-            correo_contacto,
-            total,
-            subtotal,
-            impuestos,
-            costo_envio,
-            envio_calle_principal,
-            envio_numeracion,
-            envio_ciudad,
-            envio_referencia,
-            fiscal_identificacion,
-            fiscal_razon_social,
-            creado_en,
-            estado_id,
-            estados_pedido ( nombre, orden ),
-            detalles_pedido ( producto_id, nombre_producto, precio_unitario, cantidad, subtotal_linea )
-          `)
-          .eq('numero_pedido', codigoLimpio)
+    try {
+      const data = await invocarFuncionTx('consultar-pedido', {
+        metodo: 'GET',
+        params: { codigo: codigoLimpio }
+      })
 
-        if (usuarioId && typeof usuarioId === 'string' && usuarioId.length === 36) {
-          consulta = consulta.eq('usuario_id', usuarioId)
-        }
+      const pedidoBD = data?.pedido
+      if (!pedidoBD) return null
 
-        const { data: pedidoBD, error } = await consulta.maybeSingle()
+      const idEstado = Number(pedidoBD.estado_id) || 2
+      const nombreEstado = pedidoBD.estados_pedido?.nombre || (idEstado === 3 ? 'En camino (Quito)' : (idEstado === 4 ? 'Entregado' : 'En preparación'))
 
-        if (!error && pedidoBD) {
-          // Si se pasó usuarioId, asegurar que el pedido pertenece a ese usuario
-          if (usuarioId && pedidoBD.usuario_id !== usuarioId) {
-            return null
-          }
-
-          const ordenEstadoBD = pedidoBD.estados_pedido?.orden || pedidoBD.estado_id || 2
-          const ordenEsperado = this.determinarEstadoSegunTiempo(pedidoBD.creado_en, ordenEstadoBD)
-
-          // Si pasaron 2 minutos o más, avanzar de fase
-          if (ordenEsperado > ordenEstadoBD) {
-            this.actualizarEstadoPedido(pedidoBD.numero_pedido, ordenEsperado).catch(() => {})
-          }
-
-          const ordenEstado = Math.max(ordenEstadoBD, ordenEsperado)
-          const nombres = { 1: 'Pagado', 2: 'En preparación', 3: 'En camino (Quito)', 4: 'Entregado' }
-          const nombreEstado = nombres[ordenEstado] || pedidoBD.estados_pedido?.nombre || 'En preparación'
-
-          return {
-            codigo: pedidoBD.numero_pedido,
-            fecha: new Date(pedidoBD.creado_en).toLocaleDateString('es-EC', { day: '2-digit', month: 'short', year: 'numeric' }),
-            hora: new Date(pedidoBD.creado_en).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }),
-            fechaIso: pedidoBD.creado_en,
-            estadoActual: nombreEstado,
-            estadoId: ordenEstado,
-            cliente: {
-              nombre: pedidoBD.fiscal_razon_social,
-              correo: pedidoBD.correo_contacto || 'cliente@perifericosquito.com'
-            },
-            direccionEnvio: {
-              ciudad: pedidoBD.envio_ciudad || 'Quito, Pichincha',
-              sector: pedidoBD.envio_ciudad || 'Quito',
-              callePrincipal: pedidoBD.envio_calle_principal,
-              numeracion: pedidoBD.envio_numeracion,
-              referencia: pedidoBD.envio_referencia
-            },
-            datosFiscales: {
-              identificacion: pedidoBD.fiscal_identificacion,
-              razonSocial: pedidoBD.fiscal_razon_social
-            },
-            totales: {
-              subtotal: Number(pedidoBD.subtotal),
-              envio: Number(pedidoBD.costo_envio),
-              impuestos: Number(pedidoBD.impuestos),
-              total: Number(pedidoBD.total)
-            },
-            articulos: (pedidoBD.detalles_pedido || []).map(d => ({
-              id: d.producto_id,
-              nombre: d.nombre_producto,
-              precio: Number(d.precio_unitario),
-              cantidad: d.cantidad,
-              subtotal: Number(d.subtotal_linea)
-            })),
-            pasosSeguimiento: [
-              { nombre: 'Pago Confirmado', completado: ordenEstado >= 1, activo: ordenEstado === 1, fecha: 'Procesado' },
-              { nombre: 'En preparación', completado: ordenEstado >= 2, activo: ordenEstado === 2, fecha: 'Almacén Quito' },
-              { nombre: 'En camino (Quito)', completado: ordenEstado >= 3, activo: ordenEstado === 3, fecha: 'Distribución' },
-              { nombre: 'Entregado', completado: ordenEstado >= 4, activo: ordenEstado === 4, fecha: 'Destino final' }
-            ]
-          }
-        }
-      } catch (err) {
-        console.warn('Consulta en Supabase TX no disponible:', err)
+      return {
+        id: pedidoBD.id,
+        codigo: pedidoBD.numero_pedido,
+        fecha: new Date(pedidoBD.creado_en).toLocaleDateString('es-EC', { day: '2-digit', month: 'short', year: 'numeric' }),
+        hora: new Date(pedidoBD.creado_en).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }),
+        fechaIso: pedidoBD.creado_en,
+        estadoActual: nombreEstado,
+        estadoId: idEstado,
+        cliente: {
+          nombre: pedidoBD.fiscal_razon_social,
+          correo: pedidoBD.correo_contacto
+        },
+        direccionEnvio: {
+          ciudad: pedidoBD.envio_ciudad || 'Quito, Pichincha',
+          sector: pedidoBD.envio_ciudad || 'Quito',
+          callePrincipal: pedidoBD.envio_calle_principal,
+          numeracion: pedidoBD.envio_numeracion,
+          referencia: pedidoBD.envio_referencia
+        },
+        datosFiscales: {
+          identificacion: pedidoBD.fiscal_identificacion,
+          razonSocial: pedidoBD.fiscal_razon_social,
+          direccionFiscal: pedidoBD.fiscal_direccion
+        },
+        totales: {
+          subtotal: Number(pedidoBD.subtotal),
+          envio: Number(pedidoBD.costo_envio),
+          impuestos: Number(pedidoBD.impuestos),
+          total: Number(pedidoBD.total)
+        },
+        articulos: (pedidoBD.detalles_pedido || []).map((d) => ({
+          id: d.producto_id,
+          nombre: d.nombre_producto,
+          precio: Number(d.precio_unitario),
+          cantidad: d.cantidad,
+          subtotal: Number(d.subtotal_linea)
+        })),
+        pasosSeguimiento: construirPasosSeguimiento(idEstado)
       }
+    } catch (err) {
+      console.warn('Aviso al consultar pedido por código:', err.message)
+      return null
     }
-
-    return null
   }
 }
