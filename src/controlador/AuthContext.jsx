@@ -1,9 +1,10 @@
 /**
  * CONTROLADOR: AuthContext.jsx
- * Proveedor de contexto para la sesión de usuario con Supabase Auth.
- * Proporciona inicio de sesión (HU-09), registro con carrito activo (HU-10),
- * recuperación de contraseña, cierre de sesión y actualización de perfil en español.
- * Preparado para entorno de producción sin cuentas sembradas.
+ * Proveedor de contexto para la sesión de usuario conectado exclusivamente con Supabase Core Auth (Fase 6).
+ * - La sesión de la app proviene únicamente de supabaseCore.auth.getSession() y onAuthStateChange.
+ * - Eliminado todo almacenamiento local de credenciales en texto plano.
+ * - Manejo riguroso de eventos SIGNED_OUT, TOKEN_REFRESHED y revocación de sesión.
+ * - Actualización de perfil atómica contra perfiles.nombre_completo y auth.updateUser({ email }).
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -19,68 +20,121 @@ const USUARIO_INVITADO = {
 }
 
 const CLAVE_SESION_LOCAL = 'tienda_perifericos_sesion_activa_v1'
-const CLAVE_USUARIOS_REGISTRADOS = 'tienda_perifericos_usuarios_registrados_v1'
+
+// Limpieza proactiva de credenciales locales obsoletas en texto plano (Fase 6)
+try {
+  localStorage.removeItem('tienda_perifericos_usuarios_registrados_v1')
+} catch {
+  // Ignorar en entornos sin localStorage
+}
 
 export function ProveedorAutenticacion({ children }) {
-  const [usuario, setUsuario] = useState(() => {
-    try {
-      const guardada = localStorage.getItem(CLAVE_SESION_LOCAL)
-      if (guardada) {
-        const sesion = JSON.parse(guardada)
-        if (sesion && sesion.autenticado && sesion.id) {
-          return sesion
-        }
-      }
-    } catch {
-      // Ignorar error de parsing
-    }
-    return USUARIO_INVITADO
-  })
+  const [usuario, setUsuario] = useState(USUARIO_INVITADO)
+  const [cargandoSesion, setCargandoSesion] = useState(true)
 
-  // Sincronizar estado con almacenamiento local
-  useEffect(() => {
+  // Función auxiliar para obtener el nombre del perfil de la base de datos
+  const obtenerNombrePerfil = useCallback(async (user) => {
+    if (!user?.id) return 'Invitado'
     try {
-      if (usuario.autenticado) {
-        localStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(usuario))
-      } else {
-        localStorage.removeItem(CLAVE_SESION_LOCAL)
-      }
-    } catch {
-      // Ignorar error de almacenamiento
-    }
-  }, [usuario])
+      const { data: perfil } = await supabaseCore
+        .from('perfiles')
+        .select('nombre_completo')
+        .eq('id', user.id)
+        .maybeSingle()
 
+      if (perfil?.nombre_completo) {
+        return perfil.nombre_completo
+      }
+    } catch (e) {
+      console.warn('No se pudo consultar el perfil en la base de datos:', e)
+    }
+
+    return (
+      user.user_metadata?.nombre_completo ||
+      user.user_metadata?.nombre ||
+      user.email?.split('@')[0] ||
+      'Usuario'
+    )
+  }, [])
+
+  // Sincronización inicial y escucha de cambios en la sesión de Supabase Auth
   useEffect(() => {
     let activo = true
 
-    async function sincronizarSesion() {
+    async function inicializarSesion() {
       try {
-        const { data: { session } } = await supabaseCore.auth.getSession()
+        const {
+          data: { session }
+        } = await supabaseCore.auth.getSession()
+
         if (!activo) return
+
         if (session?.user) {
-          setUsuario({
+          const nombre = await obtenerNombrePerfil(session.user)
+          if (!activo) return
+          const usuarioActivo = {
             id: session.user.id,
             email: session.user.email,
-            nombre: session.user.user_metadata?.nombre || session.user.user_metadata?.nombre_completo || session.user.email.split('@')[0],
+            nombre,
             autenticado: true
-          })
+          }
+          setUsuario(usuarioActivo)
+          try {
+            localStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(usuarioActivo))
+          } catch {
+            // Ignorar
+          }
+        } else {
+          setUsuario(USUARIO_INVITADO)
+          try {
+            localStorage.removeItem(CLAVE_SESION_LOCAL)
+          } catch {
+            // Ignorar
+          }
         }
       } catch (error) {
-        console.warn('No se pudo sincronizar la sesión con Supabase Auth:', error)
+        console.warn('Error inicializando sesión con Supabase Auth:', error)
+        if (activo) setUsuario(USUARIO_INVITADO)
+      } finally {
+        if (activo) setCargandoSesion(false)
       }
     }
 
-    sincronizarSesion()
+    inicializarSesion()
 
-    const { data: authListener } = supabaseCore.auth.onAuthStateChange((_evento, session) => {
+    const { data: authListener } = supabaseCore.auth.onAuthStateChange(async (evento, session) => {
       if (!activo) return
-      if (session?.user) {
-        setUsuario({
+
+      if (evento === 'SIGNED_OUT' || !session?.user) {
+        setUsuario(USUARIO_INVITADO)
+        try {
+          localStorage.removeItem(CLAVE_SESION_LOCAL)
+        } catch {
+          // Ignorar
+        }
+        return
+      }
+
+      if (
+        evento === 'SIGNED_IN' ||
+        evento === 'TOKEN_REFRESHED' ||
+        evento === 'USER_UPDATED' ||
+        evento === 'INITIAL_SESSION'
+      ) {
+        const nombre = await obtenerNombrePerfil(session.user)
+        if (!activo) return
+        const usuarioActualizado = {
           id: session.user.id,
           email: session.user.email,
-          nombre: session.user.user_metadata?.nombre || session.user.user_metadata?.nombre_completo || session.user.email.split('@')[0],
+          nombre,
           autenticado: true
-        })
+        }
+        setUsuario(usuarioActualizado)
+        try {
+          localStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(usuarioActualizado))
+        } catch {
+          // Ignorar
+        }
       }
     })
 
@@ -88,88 +142,60 @@ export function ProveedorAutenticacion({ children }) {
       activo = false
       authListener?.subscription?.unsubscribe()
     }
-  }, [])
+  }, [obtenerNombrePerfil])
 
-  // HU-09: Iniciar Sesión con credenciales
-  const iniciarSesion = useCallback(async (correo, contrasena) => {
-    if (!correo || !contrasena) {
-      throw new Error('Por favor ingresa tu correo electrónico y tu contraseña.')
-    }
+  // HU-09: Iniciar Sesión exclusivamente con Supabase Core Auth
+  const iniciarSesion = useCallback(
+    async (correo, contrasena) => {
+      if (!correo || !contrasena) {
+        throw new Error('Por favor ingresa tu correo electrónico y tu contraseña.')
+      }
 
-    const correoLimpio = correo.trim().toLowerCase()
+      const correoLimpio = correo.trim().toLowerCase()
 
-    try {
       const { data, error } = await supabaseCore.auth.signInWithPassword({
         email: correoLimpio,
         password: contrasena
       })
 
-      if (!error && data?.user) {
-        const usuarioNuevo = {
-          id: data.user.id,
-          email: data.user.email,
-          nombre: data.user.user_metadata?.nombre || data.user.user_metadata?.nombre_completo || data.user.email.split('@')[0],
-          autenticado: true
-        }
-        setUsuario(usuarioNuevo)
-        return usuarioNuevo
-      }
-
-      // Si Supabase devuelve error de credenciales, verificar si es una cuenta registrada localmente
       if (error) {
-        try {
-          const cuentasRegistradas = JSON.parse(localStorage.getItem(CLAVE_USUARIOS_REGISTRADOS) || '[]')
-          const encontrada = cuentasRegistradas.find(c => c.email === correoLimpio && c.password === contrasena)
-          if (encontrada) {
-            const usuarioLocal = {
-              id: encontrada.id,
-              email: encontrada.email,
-              nombre: encontrada.nombre,
-              autenticado: true
-            }
-            setUsuario(usuarioLocal)
-            return usuarioLocal
-          }
-        } catch {
-          // Ignorar error de parsing local
-        }
-
-        throw new Error(error.message === 'Invalid login credentials'
-          ? 'Credenciales no válidas. Revisa tu correo y contraseña.'
-          : error.message
+        throw new Error(
+          error.message === 'Invalid login credentials'
+            ? 'Credenciales no válidas. Revisa tu correo y contraseña.'
+            : error.message || 'Error al iniciar sesión.'
         )
       }
-    } catch (err) {
-      // Verificar si coincide con una cuenta creada por el usuario en esta instancia
+
+      if (!data?.user) {
+        throw new Error('No se recibió la sesión del usuario.')
+      }
+
+      const nombre = await obtenerNombrePerfil(data.user)
+      const usuarioNuevo = {
+        id: data.user.id,
+        email: data.user.email,
+        nombre,
+        autenticado: true
+      }
+      setUsuario(usuarioNuevo)
       try {
-        const cuentasRegistradas = JSON.parse(localStorage.getItem(CLAVE_USUARIOS_REGISTRADOS) || '[]')
-        const encontrada = cuentasRegistradas.find(c => c.email === correoLimpio && c.password === contrasena)
-        if (encontrada) {
-          const usuarioLocal = {
-            id: encontrada.id,
-            email: encontrada.email,
-            nombre: encontrada.nombre,
-            autenticado: true
-          }
-          setUsuario(usuarioLocal)
-          return usuarioLocal
-        }
+        localStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(usuarioNuevo))
       } catch {
         // Ignorar
       }
-      throw err
-    }
-  }, [])
 
-  // HU-10: Registro estricto con validaciones de base de datos y envío de confirmación por correo
+      return usuarioNuevo
+    },
+    [obtenerNombrePerfil]
+  )
+
+  // HU-10: Registro estricto con validaciones de base de datos
   const registrarse = useCallback(async (correo, contrasena, nombreCompleto) => {
-    // Validar nombre con el check constraint de Postgres (sin números, 2-100 caracteres)
     const valNombre = validarNombrePersona(nombreCompleto)
     if (!valNombre.esValido) {
       throw new Error(valNombre.mensaje)
     }
 
-    // Validar correo con el check constraint de Postgres
     const valCorreo = validarCorreoElectronico(correo)
     if (!valCorreo.esValido) {
       throw new Error(valCorreo.mensaje)
@@ -182,7 +208,6 @@ export function ProveedorAutenticacion({ children }) {
     const correoLimpio = correo.trim().toLowerCase()
     const nombreLimpio = nombreCompleto.trim()
 
-    // Llamada oficial a Supabase Auth para registro y envío de correo de verificación
     const { data, error } = await supabaseCore.auth.signUp({
       email: correoLimpio,
       password: contrasena,
@@ -202,7 +227,6 @@ export function ProveedorAutenticacion({ children }) {
       throw new Error(error.message || 'Error al registrar la cuenta en la base de datos.')
     }
 
-    // Si Supabase requiere confirmación por correo, la sesión viene nula
     if (data?.user && !data?.session) {
       return {
         requiereConfirmacion: true,
@@ -212,6 +236,12 @@ export function ProveedorAutenticacion({ children }) {
     }
 
     if (data?.session && data?.user) {
+      // Sincronizar perfiles
+      await supabaseCore
+        .from('perfiles')
+        .upsert({ id: data.user.id, nombre_completo: nombreLimpio })
+        .catch(() => {})
+
       const usuarioActivo = {
         id: data.user.id,
         email: data.user.email,
@@ -219,6 +249,11 @@ export function ProveedorAutenticacion({ children }) {
         autenticado: true
       }
       setUsuario(usuarioActivo)
+      try {
+        localStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(usuarioActivo))
+      } catch {
+        // Ignorar
+      }
       return usuarioActivo
     }
 
@@ -245,68 +280,119 @@ export function ProveedorAutenticacion({ children }) {
       throw new Error(error.message || 'No fue posible despachar el correo de recuperación.')
     }
 
-    return { exito: true, mensaje: `Se ha enviado un enlace de recuperación seguro al correo ${correoLimpio}.` }
+    return {
+      exito: true,
+      mensaje: `Se ha enviado un enlace de recuperación seguro al correo ${correoLimpio}.`
+    }
   }, [])
 
-  // Cerrar Sesión y limpiar almacenamiento local
+  // Cerrar Sesión y limpiar estado
   const cerrarSesion = useCallback(async () => {
     try {
       await supabaseCore.auth.signOut()
     } catch (err) {
       console.warn('Error cerrando sesión en Supabase:', err)
     }
+
     try {
       localStorage.removeItem(CLAVE_SESION_LOCAL)
       localStorage.removeItem('ultimo_pedido_generado')
       localStorage.removeItem('tienda_perifericos_pedidos_locales_v1')
+      localStorage.removeItem('tienda_perifericos_usuarios_registrados_v1')
     } catch {
       // Ignorar
     }
+
     setUsuario(USUARIO_INVITADO)
   }, [])
 
-  // Actualizar datos del perfil (Cambio de Correo y Nombre)
-  const actualizarPerfil = useCallback(async ({ nombre, email }) => {
-    const usuarioActualizado = {
-      ...usuario,
-      nombre: nombre || usuario.nombre,
-      email: email || usuario.email
-    }
-    setUsuario(usuarioActualizado)
-
-    // Intentar sincronizar con Supabase
-    if (usuario.id && usuario.id.includes('-') && usuario.id.length === 36) {
-      try {
-        await supabaseCore.auth.updateUser({
-          email: email || undefined,
-          data: { nombre_completo: nombre }
-        })
-      } catch (err) {
-        console.warn('No se pudo sincronizar actualización de perfil con Supabase:', err)
+  // Actualizar perfil: nombre_completo en tabla perfiles y email en Supabase Auth
+  const actualizarPerfil = useCallback(
+    async ({ nombre, email }) => {
+      if (!usuario?.autenticado || !usuario?.id) {
+        throw new Error('Se requiere una sesión activa para actualizar el perfil.')
       }
-    }
 
-    // Actualizar también en respaldo local de cuentas si existe
-    try {
-      const cuentasRegistradas = JSON.parse(localStorage.getItem(CLAVE_USUARIOS_REGISTRADOS) || '[]')
-      const actualizadas = cuentasRegistradas.map(c => {
-        if (c.id === usuario.id || c.email === usuario.email) {
-          return { ...c, nombre: nombre || c.nombre, email: email || c.email }
+      let nuevoNombre = usuario.nombre
+      let cambioEmailPendiente = false
+
+      // 1. Actualizar nombre si cambió
+      if (nombre && nombre.trim() !== usuario.nombre) {
+        const valNombre = validarNombrePersona(nombre)
+        if (!valNombre.esValido) {
+          throw new Error(valNombre.mensaje)
         }
-        return c
-      })
-      localStorage.setItem(CLAVE_USUARIOS_REGISTRADOS, JSON.stringify(actualizadas))
-    } catch {
-      // Ignorar
-    }
 
-    return usuarioActualizado
-  }, [usuario])
+        const nombreLimpio = nombre.trim()
+
+        // Actualizar en perfiles de ecommerce-core
+        const { error: errPerfil } = await supabaseCore
+          .from('perfiles')
+          .update({ nombre_completo: nombreLimpio })
+          .eq('id', usuario.id)
+
+        if (errPerfil) {
+          console.error('Error actualizando perfiles:', errPerfil)
+          throw new Error(errPerfil.message || 'Error al actualizar el nombre en la base de datos.')
+        }
+
+        // Actualizar metadata de auth
+        await supabaseCore.auth.updateUser({
+          data: {
+            nombre_completo: nombreLimpio,
+            nombre: nombreLimpio
+          }
+        })
+
+        nuevoNombre = nombreLimpio
+      }
+
+      // 2. Actualizar email si cambió
+      if (email && email.trim().toLowerCase() !== usuario.email?.toLowerCase()) {
+        const valEmail = validarCorreoElectronico(email)
+        if (!valEmail.esValido) {
+          throw new Error(valEmail.mensaje)
+        }
+
+        const emailLimpio = email.trim().toLowerCase()
+        const { error: errEmail } = await supabaseCore.auth.updateUser({
+          email: emailLimpio
+        })
+
+        if (errEmail) {
+          console.error('Error actualizando email en auth:', errEmail)
+          throw new Error(errEmail.message || 'Error al actualizar el correo electrónico.')
+        }
+
+        cambioEmailPendiente = true
+      }
+
+      // 3. Solo mutar el estado en React tras confirmación exitosa de Supabase
+      const usuarioActualizado = {
+        ...usuario,
+        nombre: nuevoNombre
+      }
+      setUsuario(usuarioActualizado)
+
+      try {
+        localStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(usuarioActualizado))
+      } catch {
+        // Ignorar
+      }
+
+      return {
+        ...usuarioActualizado,
+        cambioEmailPendiente
+      }
+    },
+    [usuario]
+  )
 
   return (
     <ContextoAutenticacion.Provider
       value={{
         usuario,
+        cargandoSesion,
         iniciarSesion,
         registrarse,
         recuperarContrasena,

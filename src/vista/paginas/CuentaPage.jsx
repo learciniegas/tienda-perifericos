@@ -239,9 +239,13 @@ export function PaginaCuenta() {
     }
 
     try {
-      await actualizarPerfil({ nombre: nombreEditado.trim(), email: correoEditado.trim().toLowerCase() })
-      setMensajePerfil('✓ Perfil actualizado con éxito.')
-      setTimeout(() => setMensajePerfil(''), 4000)
+      const res = await actualizarPerfil({ nombre: nombreEditado.trim(), email: correoEditado.trim().toLowerCase() })
+      if (res?.cambioEmailPendiente) {
+        setMensajePerfil(`✓ Perfil actualizado. Hemos enviado un correo de confirmación a ${correoEditado}. Por favor confirma el enlace para que el cambio de correo sea efectivo.`)
+      } else {
+        setMensajePerfil('✓ Perfil actualizado con éxito en la base de datos.')
+      }
+      setTimeout(() => setMensajePerfil(''), 6000)
     } catch (err) {
       setMensajePerfil(`⚠️ ${err.message || 'Ocurrió un error al guardar los cambios.'}`)
     }

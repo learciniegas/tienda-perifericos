@@ -57,7 +57,7 @@ export function PaginaContacto() {
     try {
       // Inserción en la tabla mensajes_contacto de Supabase Core
       const payload = {
-        usuario_id: (usuario?.id && usuario.id.includes('-') && usuario.id.length === 36) ? usuario.id : null,
+        usuario_id: (usuario?.autenticado && usuario?.id) ? usuario.id : null,
         nombre: nombre.trim(),
         correo: correo.trim().toLowerCase(),
         asunto: asuntoLimpio,
@@ -77,7 +77,7 @@ export function PaginaContacto() {
       setCargando(false)
     } catch (err) {
       console.warn('Error en formulario de contacto:', err)
-      setError('No se pudo enviar el mensaje. Por favor verifica tus datos e inténtalo nuevamente.')
+      setError(err.message || 'No se pudo enviar el mensaje. Por favor verifica tus datos e inténtalo nuevamente.')
       setCargando(false)
     }
   }
