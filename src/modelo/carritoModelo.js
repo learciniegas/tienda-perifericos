@@ -1,135 +1,372 @@
 /**
  * MODELO: carritoModelo.js
- * Persistencia y lógica del carrito con soporte para selección parcial de artículos (HU-07)
- * y cálculo dinámico de totales e impuestos para Pichincha (HU-08).
+ * Persistencia y sincronización del carrito con la base de datos (Fase 4):
+ * - Persistencia en ecommerce-core.items_carrito para usuarios autenticados.
+ * - Sincronización de stock en tiempo real con ecommerce-tx.inventario.
+ * - Carrito de invitados en localStorage conteniendo ÚNICAMENTE [{ producto_id, cantidad, seleccionado }].
+ * - Enriquecimiento dinámico desde ecommerce-core.productos (activos).
+ * - Detección y retiro de productos inactivos o eliminados.
+ * - Fusión de carrito al iniciar sesión mediante RPC fusionar_carrito.
+ * - Cálculo unificado de impuestos y reglas de envío para Pichincha.
  */
 
-const CLAVE_ALMACENAMIENTO = 'tienda_perifericos_carrito_v1'
+import { supabaseCore, supabaseTx } from '../config/supabaseClient'
+
+const CLAVE_LOCAL = 'tienda_perifericos_carrito_v2'
+const CLAVE_LOCAL_LEGACY = 'tienda_perifericos_carrito_v1'
 
 export const CarritoModelo = {
-  obtenerArticulos() {
+  /**
+   * Obtiene los items del carrito de invitados almacenados en localStorage.
+   * Solo devuelve [{ producto_id, cantidad, seleccionado }].
+   */
+  obtenerItemsLocales() {
     try {
-      const datosGuardados = localStorage.getItem(CLAVE_ALMACENAMIENTO)
-      if (!datosGuardados) return []
-      const articulos = JSON.parse(datosGuardados)
-      // Garantizar que cada artículo tenga el atributo 'seleccionado' (por defecto true)
-      return articulos.map(art => ({
-        ...art,
-        seleccionado: art.seleccionado !== false
-      }))
-    } catch (error) {
-      console.error('Error leyendo carrito de localStorage:', error)
+      let datos = localStorage.getItem(CLAVE_LOCAL)
+      if (!datos) {
+        datos = localStorage.getItem(CLAVE_LOCAL_LEGACY)
+      }
+      if (!datos) return []
+      const parsed = JSON.parse(datos)
+      if (!Array.isArray(parsed)) return []
+      return parsed
+        .map(it => ({
+          producto_id: Number(it.producto_id || it.id),
+          cantidad: Math.max(1, Math.min(Number(it.cantidad) || 1, 99)),
+          seleccionado: it.seleccionado !== false
+        }))
+        .filter(it => !isNaN(it.producto_id) && it.producto_id > 0)
+    } catch (e) {
+      console.error('Error leyendo carrito local:', e)
       return []
     }
   },
 
-  guardarArticulos(articulos) {
+  /**
+   * Guarda únicamente [{ producto_id, cantidad, seleccionado }] en localStorage para invitados.
+   */
+  guardarItemsLocales(items) {
     try {
-      localStorage.setItem(CLAVE_ALMACENAMIENTO, JSON.stringify(articulos))
-    } catch (error) {
-      console.error('Error guardando carrito en localStorage:', error)
+      const minimos = items.map(it => ({
+        producto_id: Number(it.producto_id || it.id),
+        cantidad: Math.max(1, Math.min(Number(it.cantidad) || 1, 99)),
+        seleccionado: it.seleccionado !== false
+      }))
+      localStorage.setItem(CLAVE_LOCAL, JSON.stringify(minimos))
+      localStorage.removeItem(CLAVE_LOCAL_LEGACY)
+    } catch (e) {
+      console.error('Error guardando carrito local:', e)
     }
   },
 
-  agregarArticulo(producto, cantidad = 1) {
-    const articulos = this.obtenerArticulos()
-    const indice = articulos.findIndex(articulo => articulo.id === producto.id)
+  /**
+   * Limpia el carrito local de invitados.
+   */
+  limpiarItemsLocales() {
+    try {
+      localStorage.removeItem(CLAVE_LOCAL)
+      localStorage.removeItem(CLAVE_LOCAL_LEGACY)
+    } catch (e) {
+      console.error('Error limpiando carrito local:', e)
+    }
+  },
 
-    if (indice >= 0) {
-      articulos[indice].cantidad = Math.min(articulos[indice].cantidad + cantidad, 99)
-      articulos[indice].seleccionado = true
-    } else {
+  /**
+   * Obtiene los items crudos del carrito persistido en ecommerce-core para un usuario autenticado.
+   */
+  async obtenerItemsRemotos(usuarioId) {
+    if (!usuarioId) return []
+    const { data, error } = await supabaseCore
+      .from('items_carrito')
+      .select('producto_id, cantidad, seleccionado')
+      .eq('usuario_id', usuarioId)
+
+    if (error) {
+      console.error('Error obteniendo items del carrito remoto:', error)
+      throw new Error('No se pudo cargar el carrito desde la base de datos.')
+    }
+    return (data || []).map(it => ({
+      producto_id: Number(it.producto_id),
+      cantidad: Number(it.cantidad),
+      seleccionado: it.seleccionado !== false
+    }))
+  },
+
+  /**
+   * Fusiona el carrito local de invitado con el carrito remoto del usuario mediante RPC.
+   */
+  async fusionarCarritoEnServidor(itemsLocales) {
+    if (!itemsLocales || itemsLocales.length === 0) return
+    const payload = itemsLocales.map(it => ({
+      producto_id: Number(it.producto_id || it.id),
+      cantidad: Math.max(1, Math.min(Number(it.cantidad) || 1, 99)),
+      seleccionado: it.seleccionado !== false
+    }))
+
+    const { error } = await supabaseCore.rpc('fusionar_carrito', { items: payload })
+    if (error) {
+      console.error('Error en RPC fusionar_carrito:', error)
+      throw new Error(error.message || 'Error al fusionar el carrito.')
+    }
+    this.limpiarItemsLocales()
+  },
+
+  /**
+   * Cruza items crudos ({ producto_id, cantidad, seleccionado }) con:
+   * 1. Datos reales de productos en ecommerce-core (precio, nombre, imagen, estado activo).
+   * 2. Stock real en ecommerce-tx.inventario.
+   * Ajusta cantidades si superan el stock, marca agotados y retira inactivos.
+   */
+  async sincronizarYEnriquecer(itemsCrudos, usuarioId = null) {
+    if (!itemsCrudos || itemsCrudos.length === 0) {
+      return { articulos: [], avisos: [], itemsAjustados: [] }
+    }
+
+    const ids = Array.from(new Set(itemsCrudos.map(i => Number(i.producto_id)).filter(Boolean)))
+    if (ids.length === 0) {
+      return { articulos: [], avisos: [], itemsAjustados: [] }
+    }
+
+    // 1. Consultar productos en ecommerce-core
+    const { data: productos, error: errorProd } = await supabaseCore
+      .from('productos')
+      .select('id, nombre, precio, precio_anterior, imagen_url, imagen_alt, categoria, activo')
+      .in('id', ids)
+
+    if (errorProd) {
+      console.error('Error consultando productos para carrito:', errorProd)
+      throw new Error('No se pudieron obtener los datos de los productos del carrito.')
+    }
+
+    // 2. Consultar inventario real en ecommerce-tx
+    const { data: inventario, error: errorInv } = await supabaseTx
+      .from('inventario')
+      .select('producto_id, stock_disponible')
+      .in('producto_id', ids)
+
+    if (errorInv) {
+      console.warn('Aviso: No se pudo verificar stock en inventario:', errorInv)
+    }
+
+    const mapProductos = new Map((productos || []).map(p => [Number(p.id), p]))
+    const mapStock = new Map((inventario || []).map(inv => [Number(inv.producto_id), Number(inv.stock_disponible)]))
+
+    const articulos = []
+    const avisos = []
+    const idsInactivosParaBorrar = []
+    const itemsAjustados = []
+
+    for (const item of itemsCrudos) {
+      const prodId = Number(item.producto_id)
+      const producto = mapProductos.get(prodId)
+
+      // Si el producto no existe o está inactivo en el catálogo, se descarta
+      if (!producto || !producto.activo) {
+        const nombreDesc = producto?.nombre || `Producto #${prodId}`
+        avisos.push(`El producto "${nombreDesc}" ya no se encuentra disponible y fue retirado de tu carrito.`)
+        idsInactivosParaBorrar.push(prodId)
+        continue
+      }
+
+      const stockDisponible = mapStock.has(prodId) ? mapStock.get(prodId) : 10
+      let cantidad = Math.max(1, Math.min(Number(item.cantidad) || 1, 99))
+      const agotado = stockDisponible <= 0
+      let seleccionado = item.seleccionado !== false
+
+      if (agotado) {
+        seleccionado = false
+        avisos.push(`"${producto.nombre}" está agotado en inventario.`)
+      } else if (cantidad > stockDisponible) {
+        cantidad = stockDisponible
+        avisos.push(`La cantidad de "${producto.nombre}" se ajustó a ${stockDisponible} por límite de stock disponible.`)
+      }
+
+      itemsAjustados.push({
+        producto_id: prodId,
+        cantidad,
+        seleccionado
+      })
+
       articulos.push({
         id: producto.id,
+        producto_id: producto.id,
         nombre: producto.nombre,
         precio: Number(producto.precio),
+        precio_anterior: producto.precio_anterior ? Number(producto.precio_anterior) : null,
         imagen_url: producto.imagen_url,
         imagen_alt: producto.imagen_alt || producto.nombre,
         categoria: producto.categoria,
-        cantidad: Math.max(1, cantidad),
-        seleccionado: true
+        cantidad,
+        seleccionado,
+        stock_disponible: Math.max(0, stockDisponible),
+        agotado
       })
     }
 
-    this.guardarArticulos(articulos)
-    return articulos
+    // Si hay usuario autenticado y se descartaron productos inactivos, eliminarlos de la BD
+    if (usuarioId && idsInactivosParaBorrar.length > 0) {
+      await supabaseCore
+        .from('items_carrito')
+        .delete()
+        .eq('usuario_id', usuarioId)
+        .in('producto_id', idsInactivosParaBorrar)
+        .catch(() => {})
+    }
+
+    return { articulos, avisos, itemsAjustados }
   },
 
-  eliminarArticulo(idProducto) {
-    const articulos = this.obtenerArticulos().filter(articulo => articulo.id !== idProducto)
-    this.guardarArticulos(articulos)
-    return articulos
+  /**
+   * Mutaciones en base de datos para usuarios autenticados
+   */
+  async agregarArticuloBD(usuarioId, productoId, cantidad = 1) {
+    // 1. Validar stock real en ecommerce-tx
+    const { data: inv } = await supabaseTx
+      .from('inventario')
+      .select('stock_disponible')
+      .eq('producto_id', productoId)
+      .maybeSingle()
+
+    const stock = inv ? Number(inv.stock_disponible) : 10
+    if (stock <= 0) {
+      throw new Error('Este producto se encuentra agotado en inventario.')
+    }
+
+    // 2. Consultar si ya existe en items_carrito
+    const { data: actual } = await supabaseCore
+      .from('items_carrito')
+      .select('cantidad')
+      .match({ usuario_id: usuarioId, producto_id: productoId })
+      .maybeSingle()
+
+    const cantidadActual = actual ? Number(actual.cantidad) : 0
+    const nuevaCantidad = Math.min(Math.max(1, cantidadActual + cantidad), stock, 99)
+
+    const { error } = await supabaseCore
+      .from('items_carrito')
+      .upsert({
+        usuario_id: usuarioId,
+        producto_id: productoId,
+        cantidad: nuevaCantidad,
+        seleccionado: true
+      })
+
+    if (error) {
+      console.error('Error agregando a items_carrito:', error)
+      throw new Error('No se pudo guardar el producto en tu carrito en la base de datos.')
+    }
+
+    return nuevaCantidad
   },
 
-  actualizarCantidad(idProducto, cantidad) {
-    let articulos = this.obtenerArticulos()
+  async eliminarArticuloBD(usuarioId, productoId) {
+    const { error } = await supabaseCore
+      .from('items_carrito')
+      .delete()
+      .match({ usuario_id: usuarioId, producto_id: productoId })
+
+    if (error) {
+      console.error('Error eliminando de items_carrito:', error)
+      throw new Error('No se pudo eliminar el artículo de la base de datos.')
+    }
+  },
+
+  async actualizarCantidadBD(usuarioId, productoId, cantidad) {
     if (cantidad <= 0) {
-      return this.eliminarArticulo(idProducto)
+      return this.eliminarArticuloBD(usuarioId, productoId)
     }
-    articulos = articulos.map(articulo => {
-      if (articulo.id === idProducto) {
-        return { ...articulo, cantidad: Math.min(cantidad, 99) }
-      }
-      return articulo
-    })
-    this.guardarArticulos(articulos)
-    return articulos
-  },
 
-  /**
-   * HU-07: Alterna la casilla de selección de un producto específico.
-   */
-  alternarSeleccionArticulo(idProducto) {
-    const articulos = this.obtenerArticulos().map(art => {
-      if (art.id === idProducto) {
-        return { ...art, seleccionado: !art.seleccionado }
-      }
-      return art
-    })
-    this.guardarArticulos(articulos)
-    return articulos
-  },
+    const { data: inv } = await supabaseTx
+      .from('inventario')
+      .select('stock_disponible')
+      .eq('producto_id', productoId)
+      .maybeSingle()
 
-  /**
-   * HU-07: Marca o desmarca todos los artículos del carrito.
-   */
-  seleccionarTodosArticulos(seleccionados = true) {
-    const articulos = this.obtenerArticulos().map(art => ({
-      ...art,
-      seleccionado: Boolean(seleccionados)
-    }))
-    this.guardarArticulos(articulos)
-    return articulos
-  },
-
-  /**
-   * HU-08: Al confirmar la compra, elimina solo los artículos que fueron comprados,
-   * preservando en el carrito los artículos que no estaban seleccionados.
-   */
-  eliminarArticulosComprados(articulosComprados = []) {
-    const idsComprados = new Set(articulosComprados.map(a => a.id))
-    const articulosRestantes = this.obtenerArticulos().filter(art => !idsComprados.has(art.id))
-    this.guardarArticulos(articulosRestantes)
-    return articulosRestantes
-  },
-
-  limpiarCarrito() {
-    try {
-      localStorage.removeItem(CLAVE_ALMACENAMIENTO)
-    } catch (error) {
-      console.error('Error al vaciar el carrito local:', error)
+    const stock = inv ? Number(inv.stock_disponible) : 99
+    if (stock <= 0) {
+      throw new Error('Este producto se encuentra agotado en inventario.')
     }
-    return []
+
+    const cantidadValida = Math.min(Math.max(1, cantidad), stock, 99)
+
+    const { error } = await supabaseCore
+      .from('items_carrito')
+      .update({ cantidad: cantidadValida })
+      .match({ usuario_id: usuarioId, producto_id: productoId })
+
+    if (error) {
+      console.error('Error actualizando cantidad en items_carrito:', error)
+      throw new Error('No se pudo actualizar la cantidad en la base de datos.')
+    }
+
+    return cantidadValida
+  },
+
+  async alternarSeleccionBD(usuarioId, productoId, nuevoEstado) {
+    const { error } = await supabaseCore
+      .from('items_carrito')
+      .update({ seleccionado: nuevoEstado })
+      .match({ usuario_id: usuarioId, producto_id: productoId })
+
+    if (error) {
+      console.error('Error al actualizar selección en items_carrito:', error)
+      throw new Error('No se pudo actualizar la selección en la base de datos.')
+    }
+  },
+
+  async seleccionarTodosBD(usuarioId, seleccionados, idsValidos) {
+    let query = supabaseCore
+      .from('items_carrito')
+      .update({ seleccionado: seleccionados })
+      .eq('usuario_id', usuarioId)
+
+    if (idsValidos && idsValidos.length > 0) {
+      query = query.in('producto_id', idsValidos)
+    }
+
+    const { error } = await query
+    if (error) {
+      console.error('Error al seleccionar todos en items_carrito:', error)
+      throw new Error('No se pudo actualizar la selección en la base de datos.')
+    }
+  },
+
+  async eliminarArticulosCompradosBD(usuarioId, idsComprados) {
+    if (!idsComprados || idsComprados.length === 0) return
+    const { error } = await supabaseCore
+      .from('items_carrito')
+      .delete()
+      .eq('usuario_id', usuarioId)
+      .in('producto_id', idsComprados)
+
+    if (error) {
+      console.error('Error eliminando artículos comprados de items_carrito:', error)
+    }
+  },
+
+  async vaciarCarritoBD(usuarioId) {
+    const { error } = await supabaseCore
+      .from('items_carrito')
+      .delete()
+      .eq('usuario_id', usuarioId)
+
+    if (error) {
+      console.error('Error vaciando items_carrito:', error)
+      throw new Error('No se pudo vaciar el carrito en la base de datos.')
+    }
   },
 
   /**
-   * Calcula los totales dinámicamente con base en los artículos seleccionados (HU-07) y la configuración de la tienda.
+   * Calcula los totales dinámicamente con base en los artículos seleccionados (HU-07)
+   * que NO estén agotados, y la configuración de la tienda.
    */
   calcularTotales(articulos, configuracion = null) {
     const cantidadTotal = articulos.reduce((acumulado, articulo) => acumulado + articulo.cantidad, 0)
-    
-    // Filtro de artículos marcados para compra
-    const articulosSeleccionados = articulos.filter(art => art.seleccionado !== false)
+
+    // Filtro de artículos marcados para compra y disponibles
+    const articulosSeleccionados = articulos.filter(
+      art => art.seleccionado !== false && !art.agotado && art.stock_disponible > 0
+    )
     const cantidadSeleccionada = articulosSeleccionados.reduce((acc, art) => acc + art.cantidad, 0)
 
     const subtotal = articulosSeleccionados.reduce((acumulado, articulo) => {
@@ -145,7 +382,9 @@ export const CarritoModelo = {
     const impuestos = +(subtotal * ivaPorcentaje).toFixed(2)
     const total = +(subtotal + envio + impuestos).toFixed(2)
 
-    const todosSeleccionados = articulos.length > 0 && articulos.every(art => art.seleccionado !== false)
+    const articulosComprables = articulos.filter(art => !art.agotado && art.stock_disponible > 0)
+    const todosSeleccionados =
+      articulosComprables.length > 0 && articulosComprables.every(art => art.seleccionado !== false)
 
     return {
       cantidadTotal,

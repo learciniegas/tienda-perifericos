@@ -1,7 +1,10 @@
 /**
  * VISTA: CarritoPage.jsx
- * Gestión del carrito de compras con soporte para selección parcial de artículos (HU-07)
- * y cálculo dinámico de subtotales para Quito, Pichincha.
+ * Gestión del carrito de compras con soporte para:
+ * - Selección parcial de artículos (HU-07).
+ * - Artículos agotados o con límite de inventario real (Fase 4).
+ * - Banners de notificación de ajustes de stock o productos retirados.
+ * - Cálculo dinámico de subtotales para Pichincha con configuración de negocio.
  */
 
 import { Link, useNavigate } from 'react-router-dom'
@@ -18,6 +21,8 @@ export function PaginaCarrito() {
     haySeleccionados,
     todosSeleccionados,
     totales,
+    avisosInventario,
+    limpiarAvisosInventario,
     actualizarCantidad,
     eliminarDelCarrito,
     alternarSeleccion,
@@ -35,6 +40,28 @@ export function PaginaCarrito() {
           Revisa y selecciona los periféricos que deseas comprar.
         </p>
       </div>
+
+      {/* Banner de avisos de inventario (ajustes de stock o retiro de inactivos) */}
+      {avisosInventario && avisosInventario.length > 0 && (
+        <div className="selection-alert-banner" role="status" aria-live="polite">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <div>
+              {avisosInventario.map((aviso, idx) => (
+                <p key={idx} style={{ margin: '4px 0' }}>⚠️ {aviso}</p>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={limpiarAvisosInventario}
+              className="btn-link-remove"
+              style={{ marginLeft: '12px' }}
+              aria-label="Cerrar avisos de inventario"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
 
       {articulos.length === 0 ? (
         <div className="empty-cart-card" role="region" aria-label="Carrito vacío">
@@ -58,11 +85,11 @@ export function PaginaCarrito() {
                   type="checkbox"
                   checked={todosSeleccionados}
                   onChange={(e) => seleccionarTodos(e.target.checked)}
-                  aria-label="Seleccionar o deseleccionar todos los productos del carrito"
+                  aria-label="Seleccionar o deseleccionar todos los productos disponibles del carrito"
                   className="cart-checkbox"
                 />
                 <span className="selection-all-text">
-                  Seleccionar todos los artículos ({articulos.length})
+                  Seleccionar disponibles ({articulos.filter(a => !a.agotado && a.stock_disponible > 0).length})
                 </span>
               </label>
 
@@ -82,12 +109,13 @@ export function PaginaCarrito() {
             <ul className="cart-items-list" aria-label="Lista de artículos en el carrito">
               {articulos.map((articulo) => {
                 const subtotalItem = (articulo.precio * articulo.cantidad).toFixed(2)
-                const estaSeleccionado = articulo.seleccionado !== false
+                const estaAgotado = articulo.agotado || articulo.stock_disponible <= 0
+                const estaSeleccionado = !estaAgotado && articulo.seleccionado !== false
 
                 return (
                   <li
                     key={articulo.id}
-                    className={`cart-item-row ${estaSeleccionado ? 'item-selected' : 'item-unselected'}`}
+                    className={`cart-item-row ${estaAgotado ? 'item-out-of-stock' : estaSeleccionado ? 'item-selected' : 'item-unselected'}`}
                   >
                     {/* Checkbox de selección individual (HU-07) */}
                     <div className="item-select-col">
@@ -95,8 +123,13 @@ export function PaginaCarrito() {
                         type="checkbox"
                         id={`check-item-${articulo.id}`}
                         checked={estaSeleccionado}
+                        disabled={estaAgotado}
                         onChange={() => alternarSeleccion(articulo.id)}
-                        aria-label={`Seleccionar ${articulo.nombre} para comprar`}
+                        aria-label={
+                          estaAgotado
+                            ? `${articulo.nombre} está agotado y no puede seleccionarse para compra`
+                            : `Seleccionar ${articulo.nombre} para comprar`
+                        }
                         className="cart-checkbox"
                       />
                     </div>
@@ -107,11 +140,28 @@ export function PaginaCarrito() {
                       </div>
                       <div>
                         <h2 className="item-name">
-                          <label htmlFor={`check-item-${articulo.id}`} className="cursor-pointer">
+                          <label
+                            htmlFor={estaAgotado ? undefined : `check-item-${articulo.id}`}
+                            className={estaAgotado ? '' : 'cursor-pointer'}
+                          >
                             {articulo.nombre}
                           </label>
                         </h2>
                         <span className="item-cat">{articulo.categoria}</span>
+                        {estaAgotado && (
+                          <div style={{ marginTop: '4px' }}>
+                            <span className="badge-oferta" style={{ backgroundColor: '#dc2626', color: '#fff' }}>
+                              Agotado en inventario
+                            </span>
+                          </div>
+                        )}
+                        {!estaAgotado && articulo.stock_disponible <= 5 && (
+                          <div style={{ marginTop: '4px' }}>
+                            <span style={{ fontSize: '12px', color: '#b45309', fontWeight: 600 }}>
+                              Solo quedan {articulo.stock_disponible} disponibles
+                            </span>
+                          </div>
+                        )}
                         <div className="item-actions-row">
                           <button
                             type="button"
@@ -138,6 +188,7 @@ export function PaginaCarrito() {
                         <button
                           type="button"
                           className="btn-qty"
+                          disabled={estaAgotado || articulo.cantidad <= 1}
                           onClick={() => actualizarCantidad(articulo.id, articulo.cantidad - 1)}
                           aria-label={`Restar una unidad a ${articulo.nombre}`}
                         >
@@ -147,8 +198,9 @@ export function PaginaCarrito() {
                           type="number"
                           id={`qty-${articulo.id}`}
                           min="1"
-                          max="99"
+                          max={estaAgotado ? 0 : Math.min(articulo.stock_disponible, 99)}
                           value={articulo.cantidad}
+                          disabled={estaAgotado}
                           onChange={(evento) => actualizarCantidad(articulo.id, Number(evento.target.value))}
                           className="qty-input"
                           aria-label={`Cantidad actual de ${articulo.nombre}`}
@@ -156,6 +208,7 @@ export function PaginaCarrito() {
                         <button
                           type="button"
                           className="btn-qty"
+                          disabled={estaAgotado || articulo.cantidad >= articulo.stock_disponible}
                           onClick={() => actualizarCantidad(articulo.id, articulo.cantidad + 1)}
                           aria-label={`Añadir una unidad a ${articulo.nombre}`}
                         >
@@ -166,7 +219,7 @@ export function PaginaCarrito() {
 
                     <div className="item-total-col">
                       <span className="col-label-mobile">Subtotal: </span>
-                      <strong>${subtotalItem}</strong>
+                      <strong>{estaAgotado ? '$0.00' : `$${subtotalItem}`}</strong>
                     </div>
                   </li>
                 )
@@ -195,7 +248,7 @@ export function PaginaCarrito() {
 
               {!haySeleccionados && (
                 <div className="selection-alert-banner" role="alert">
-                  <span>⚠️ Selecciona al menos un producto para habilitar el checkout.</span>
+                  <span>⚠️ Selecciona al menos un producto disponible para habilitar el checkout.</span>
                 </div>
               )}
 
@@ -227,9 +280,9 @@ export function PaginaCarrito() {
                 </div>
               </dl>
 
-              {totales.subtotal > 0 && totales.subtotal < 50 && (
+              {totales.subtotal > 0 && totales.subtotal < totales.envioGratisDesde && (
                 <p className="shipping-hint-text">
-                  💡 Agrega <strong>${(50 - totales.subtotal).toFixed(2)}</strong> más para recibir <strong>envío gratis</strong>.
+                  💡 Agrega <strong>${(totales.envioGratisDesde - totales.subtotal).toFixed(2)}</strong> más para recibir <strong>envío gratis</strong>.
                 </p>
               )}
 
@@ -247,7 +300,7 @@ export function PaginaCarrito() {
                 aria-label={
                   haySeleccionados
                     ? `Proceder al checkout con ${cantidadSeleccionada} artículos seleccionados por un total de $${totales.total.toFixed(2)}`
-                    : 'Selecciona al menos un artículo para proceder al checkout'
+                    : 'Selecciona al menos un artículo disponible para proceder al checkout'
                 }
               >
                 {haySeleccionados
