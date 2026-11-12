@@ -22,6 +22,7 @@ import { PaginaSeguimiento } from './vista/paginas/SeguimientoPage'
 import { PaginaPreguntasFrecuentes } from './vista/paginas/FaqPage'
 import { PaginaContacto } from './vista/paginas/ContactoPage'
 import { PaginaCuenta } from './vista/paginas/CuentaPage'
+import { PaginaNoEncontrada } from './vista/paginas/NoEncontradaPage'
 import './index.css'
 import './App.css'
 
@@ -54,6 +55,7 @@ export default function Aplicacion() {
                 <Route path="/faq" element={<PaginaPreguntasFrecuentes />} />
                 <Route path="/contacto" element={<PaginaContacto />} />
                 <Route path="/cuenta" element={<PaginaCuenta />} />
+                <Route path="*" element={<PaginaNoEncontrada />} />
               </Routes>
             </main>
 

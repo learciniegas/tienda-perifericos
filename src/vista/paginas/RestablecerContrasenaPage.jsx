@@ -13,13 +13,35 @@ export function PaginaRestablecerContrasena() {
   const [nuevaContrasena, setNuevaContrasena] = useState('')
   const [confirmarContrasena, setConfirmarContrasena] = useState('')
   const [cargando, setCargando] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    const hash = window.location.hash || ''
+    const search = window.location.search || ''
+    const params = new URLSearchParams(hash.startsWith('#') ? hash.substring(1) : search)
+    const errorDesc = params.get('error_description')
+    return errorDesc ? decodeURIComponent(errorDesc.replace(/\+/g, ' ')) : ''
+  })
   const [mensajeExito, setMensajeExito] = useState('')
   const [sesionRecuperacionValida, setSesionRecuperacionValida] = useState(false)
-  const [verificandoEnlace, setVerificandoEnlace] = useState(true)
+  const [verificandoEnlace, setVerificandoEnlace] = useState(() => {
+    if (typeof window === 'undefined') return true
+    const hash = window.location.hash || ''
+    const search = window.location.search || ''
+    const params = new URLSearchParams(hash.startsWith('#') ? hash.substring(1) : search)
+    return !params.get('error_description')
+  })
   const navigate = useNavigate()
 
   useEffect(() => {
+    const hash = window.location.hash || ''
+    const search = window.location.search || ''
+    const params = new URLSearchParams(hash.startsWith('#') ? hash.substring(1) : search)
+    if (params.get('error_description')) {
+      return
+    }
+
+    const tieneTokenEnHash = hash.includes('access_token') || hash.includes('type=recovery') || search.includes('code=')
+
     // 1. Escuchar evento de recuperación de contraseña de Supabase Auth
     const { data: { subscription } } = supabaseCore.auth.onAuthStateChange(async (event, session) => {
       if (event === 'PASSWORD_RECOVERY' || (session && event === 'SIGNED_IN')) {
@@ -32,14 +54,24 @@ export function PaginaRestablecerContrasena() {
     supabaseCore.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setSesionRecuperacionValida(true)
+        setVerificandoEnlace(false)
+      } else if (!tieneTokenEnHash) {
+        setVerificandoEnlace(false)
       }
-      setVerificandoEnlace(false)
     }).catch(() => {
-      setVerificandoEnlace(false)
+      if (!tieneTokenEnHash) {
+        setVerificandoEnlace(false)
+      }
     })
+
+    // Timeout de seguridad si el token en hash tarda en procesarse
+    const timeoutSeguridad = setTimeout(() => {
+      setVerificandoEnlace(false)
+    }, 4000)
 
     return () => {
       subscription?.unsubscribe()
+      clearTimeout(timeoutSeguridad)
     }
   }, [])
 
