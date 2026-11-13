@@ -114,6 +114,10 @@ export function ProveedorCarrito({ children }) {
   const agregarAlCarrito = useCallback(
     async (producto, cantidad = 1) => {
       try {
+        if (!producto || !producto.id) {
+          throw new Error('Producto no válido.')
+        }
+
         if (usuario?.autenticado && usuario?.id) {
           await CarritoModelo.agregarArticuloBD(usuario.id, producto.id, cantidad)
           // Recargar carrito enriquecido desde la BD
@@ -134,10 +138,22 @@ export function ProveedorCarrito({ children }) {
             totalArticulos
           })
         } else {
+          // Invitado: validar stock real en almacén de TX sin asumir cantidades inventadas
+          const stock = await CarritoModelo.obtenerStockProducto(producto.id)
+
           const itemsLocales = CarritoModelo.obtenerItemsLocales()
           const idx = itemsLocales.findIndex(i => i.producto_id === producto.id)
+          const cantidadActual = idx >= 0 ? itemsLocales[idx].cantidad : 0
+          const nuevaCantidad = cantidadActual + cantidad
+
+          if (nuevaCantidad > stock) {
+            throw new Error(
+              `Solo hay ${stock} unidad(es) disponible(s) en inventario. Ya tienes ${cantidadActual} en tu carrito.`
+            )
+          }
+
           if (idx >= 0) {
-            itemsLocales[idx].cantidad = Math.min(itemsLocales[idx].cantidad + cantidad, 99)
+            itemsLocales[idx].cantidad = nuevaCantidad
             itemsLocales[idx].seleccionado = true
           } else {
             itemsLocales.push({
@@ -167,9 +183,13 @@ export function ProveedorCarrito({ children }) {
         setTimeout(() => {
           setNotificacionVisual(null)
         }, 4500)
+
+        return { ok: true }
       } catch (err) {
         console.error('Error al agregar al carrito:', err)
-        setMensajeAccesible(err.message || 'No se pudo agregar el producto al carrito.')
+        const errorMsg = err.message || 'No se pudo agregar el producto al carrito.'
+        setMensajeAccesible(errorMsg)
+        return { ok: false, error: errorMsg }
       }
     },
     [usuario]
@@ -222,9 +242,15 @@ export function ProveedorCarrito({ children }) {
             prev.map(art => (art.id === productoId ? { ...art, cantidad: cantFinal } : art))
           )
         } else {
+          // Validar stock real en almacén de TX para invitados
+          const stock = await CarritoModelo.obtenerStockProducto(productoId)
+          if (cantidad > stock) {
+            throw new Error(`Solo hay ${stock} unidad(es) disponible(s) en inventario.`)
+          }
+
           const itemsLocales = CarritoModelo.obtenerItemsLocales().map(i => {
             if (i.producto_id === productoId) {
-              return { ...i, cantidad: Math.min(Math.max(1, cantidad), 99) }
+              return { ...i, cantidad: Math.max(1, cantidad) }
             }
             return i
           })

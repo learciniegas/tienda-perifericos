@@ -25,6 +25,7 @@ export function PaginaProductoDetalle() {
   const [imagenFallo, setImagenFallo] = useState(false)
   const [agregando, setAgregando] = useState(false)
   const [mensajeExito, setMensajeExito] = useState(false)
+  const [errorAgregar, setErrorAgregar] = useState('')
 
   // Estado de reseñas y valoraciones (Release 3)
   const [resenasData, setResenasData] = useState({
@@ -173,27 +174,36 @@ export function PaginaProductoDetalle() {
   }
 
   // HU-06: Añadir al carrito desde la página del producto
-  const manejarAgregarCarrito = (e) => {
+  const manejarAgregarCarrito = async (e) => {
     if (e) e.preventDefault()
     if (!producto) return
 
-    setAgregando(true)
-    agregarAlCarrito(producto, cantidad)
+    setErrorAgregar('')
+    const resultado = await agregarAlCarrito(producto, cantidad)
+    if (resultado?.ok) {
+      setAgregando(true)
+      setMensajeExito(true)
+      setTimeout(() => {
+        setAgregando(false)
+      }, 600)
 
-    setMensajeExito(true)
-    setTimeout(() => {
-      setAgregando(false)
-    }, 600)
-
-    setTimeout(() => {
-      setMensajeExito(false)
-    }, 4500)
+      setTimeout(() => {
+        setMensajeExito(false)
+      }, 4500)
+    } else {
+      setErrorAgregar(resultado?.error || 'No fue posible agregar el producto al carrito.')
+    }
   }
 
   // Comprar ahora (1 clic directo al checkout)
-  const manejarComprarAhora = () => {
+  const manejarComprarAhora = async () => {
     if (!producto) return
-    agregarAlCarrito(producto, cantidad)
+    setErrorAgregar('')
+    const resultado = await agregarAlCarrito(producto, cantidad)
+    if (!resultado?.ok) {
+      setErrorAgregar(resultado?.error || 'No fue posible agregar el producto para proceder a la compra.')
+      return
+    }
     if (!usuario?.autenticado) {
       navigate('/login?redirect=/checkout')
     } else {
@@ -234,7 +244,7 @@ export function PaginaProductoDetalle() {
   const descuentoPorcentaje = tieneDescuento
     ? (producto.descuento_porcentaje || Math.round(((precioAnteriorNum - precioNum) / precioAnteriorNum) * 100))
     : null
-  const stockDisponible = Number(producto.stock_disponible ?? (producto.en_stock ? 10 : 0))
+  const stockDisponible = Number(producto.stock_disponible || 0)
   const enStock = Boolean(producto.en_stock && stockDisponible > 0)
   const maxOpciones = Math.min(10, Math.max(1, stockDisponible))
   const opcionesCantidad = Array.from({ length: maxOpciones }, (_, i) => i + 1)
@@ -280,7 +290,7 @@ export function PaginaProductoDetalle() {
             ) : (
               <div className="detail-image-fallback" aria-hidden="true">
                 <span className="fallback-category-tag">{producto.categoria}</span>
-                <IconoPeriferico tipo={producto.categoria || 'keyboard'} size={140} className="fallback-large-icon" />
+                <IconoPeriferico tipo={producto.categoria_slug || producto.categoria || 'keyboard'} size={140} className="fallback-large-icon" />
                 <span className="fallback-brand-tag">{producto.marca}</span>
               </div>
             )}
@@ -450,6 +460,13 @@ export function PaginaProductoDetalle() {
               <div className="buybox-success-alert" role="status" aria-live="polite">
                 <span>✓ Se agregaron {cantidad} unidad(es) al carrito.</span>
                 <Link to="/carrito" className="buybox-cart-link">Ver carrito</Link>
+              </div>
+            )}
+
+            {/* Mensaje de error accesible */}
+            {errorAgregar && (
+              <div className="buybox-error-alert" role="alert" style={{ marginTop: '0.75rem', color: '#dc2626', fontSize: '0.875rem' }}>
+                ⚠️ {errorAgregar}
               </div>
             )}
 

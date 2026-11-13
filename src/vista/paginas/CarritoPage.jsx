@@ -136,7 +136,7 @@ export function PaginaCarrito() {
 
                     <div className="item-info-col">
                       <div className="item-thumbnail">
-                        <IconoPeriferico tipo={articulo.categoria || 'keyboard'} size={36} />
+                        <IconoPeriferico tipo={articulo.categoria_slug || articulo.categoria || 'keyboard'} size={36} />
                       </div>
                       <div>
                         <h2 className="item-name">
@@ -198,7 +198,7 @@ export function PaginaCarrito() {
                           type="number"
                           id={`qty-${articulo.id}`}
                           min="1"
-                          max={estaAgotado ? 0 : Math.min(articulo.stock_disponible, 99)}
+                          max={estaAgotado ? 0 : articulo.stock_disponible}
                           value={articulo.cantidad}
                           disabled={estaAgotado}
                           onChange={(evento) => actualizarCantidad(articulo.id, Number(evento.target.value))}

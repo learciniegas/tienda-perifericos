@@ -13,14 +13,22 @@ export function TarjetaProducto({ producto }) {
   const { agregarAlCarrito } = useCarrito()
   const [imagenFallo, setImagenFallo] = useState(false)
   const [agregando, setAgregando] = useState(false)
+  const [errorLocal, setErrorLocal] = useState('')
 
-  const agregarProducto = (evento) => {
+  const agregarProducto = async (evento) => {
     evento.preventDefault()
     evento.stopPropagation()
     if (!producto.en_stock) return
-    setAgregando(true)
-    agregarAlCarrito(producto, 1)
-    setTimeout(() => setAgregando(false), 800)
+
+    setErrorLocal('')
+    const resultado = await agregarAlCarrito(producto, 1)
+    if (resultado?.ok) {
+      setAgregando(true)
+      setTimeout(() => setAgregando(false), 1200)
+    } else {
+      setErrorLocal(resultado?.error || 'No se pudo agregar al carrito')
+      setTimeout(() => setErrorLocal(''), 5000)
+    }
   }
 
   const precioNum = Number(producto.precio) || 0
@@ -47,7 +55,7 @@ export function TarjetaProducto({ producto }) {
         ) : (
           <div className="product-image-fallback" aria-hidden="true">
             <div className="fallback-badge">{producto.categoria}</div>
-            <IconoPeriferico tipo={producto.categoria || 'keyboard'} size={80} className="fallback-icon" />
+            <IconoPeriferico tipo={producto.categoria_slug || producto.categoria || 'keyboard'} size={80} className="fallback-icon" />
           </div>
         )}
       </div>
@@ -101,6 +109,12 @@ export function TarjetaProducto({ producto }) {
             Ver detalles
           </Link>
         </div>
+
+        {errorLocal && (
+          <p className="stock-warning-text" role="alert" style={{ marginTop: '8px', color: '#dc2626', fontSize: '13px' }}>
+            ⚠️ {errorLocal}
+          </p>
+        )}
       </div>
     </article>
   )

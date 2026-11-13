@@ -1,10 +1,10 @@
 /**
  * MODELO: carritoModelo.js
- * Persistencia y sincronización del carrito con la base de datos (Fase 4):
+ * Persistencia y sincronización del carrito con la base de datos:
  * - Persistencia en ecommerce-core.items_carrito para usuarios autenticados.
- * - Sincronización de stock en tiempo real con ecommerce-tx.inventario.
+ * - Sincronización estricta de stock en tiempo real con ecommerce-tx.inventario (sin stocks asumidos ni inventados).
  * - Carrito de invitados en localStorage conteniendo ÚNICAMENTE [{ producto_id, cantidad, seleccionado }].
- * - Enriquecimiento dinámico desde ecommerce-core.productos (activos).
+ * - Enriquecimiento dinámico desde ecommerce-core.productos uniendo categorias(nombre, slug).
  * - Detección y retiro de productos inactivos o eliminados.
  * - Fusión de carrito al iniciar sesión mediante RPC fusionar_carrito.
  * - Cálculo unificado de impuestos y reglas de envío para Pichincha.
@@ -32,7 +32,7 @@ export const CarritoModelo = {
       return parsed
         .map(it => ({
           producto_id: Number(it.producto_id || it.id),
-          cantidad: Math.max(1, Math.min(Number(it.cantidad) || 1, 99)),
+          cantidad: Math.max(1, Number(it.cantidad) || 1),
           seleccionado: it.seleccionado !== false
         }))
         .filter(it => !isNaN(it.producto_id) && it.producto_id > 0)
@@ -49,7 +49,7 @@ export const CarritoModelo = {
     try {
       const minimos = items.map(it => ({
         producto_id: Number(it.producto_id || it.id),
-        cantidad: Math.max(1, Math.min(Number(it.cantidad) || 1, 99)),
+        cantidad: Math.max(1, Number(it.cantidad) || 1),
         seleccionado: it.seleccionado !== false
       }))
       localStorage.setItem(CLAVE_LOCAL, JSON.stringify(minimos))
@@ -83,7 +83,7 @@ export const CarritoModelo = {
 
     if (error) {
       console.error('Error obteniendo items del carrito remoto:', error)
-      throw new Error('No se pudo cargar el carrito desde la base de datos.')
+      throw new Error('No se pudo cargar el carrito desde la base de datos: ' + error.message)
     }
     return (data || []).map(it => ({
       producto_id: Number(it.producto_id),
@@ -99,7 +99,7 @@ export const CarritoModelo = {
     if (!itemsLocales || itemsLocales.length === 0) return
     const payload = itemsLocales.map(it => ({
       producto_id: Number(it.producto_id || it.id),
-      cantidad: Math.max(1, Math.min(Number(it.cantidad) || 1, 99)),
+      cantidad: Math.max(1, Number(it.cantidad) || 1),
       seleccionado: it.seleccionado !== false
     }))
 
@@ -113,8 +113,8 @@ export const CarritoModelo = {
 
   /**
    * Cruza items crudos ({ producto_id, cantidad, seleccionado }) con:
-   * 1. Datos reales de productos en ecommerce-core (precio, nombre, imagen, estado activo).
-   * 2. Stock real en ecommerce-tx.inventario.
+   * 1. Datos reales de productos en ecommerce-core uniendo categorias (nombre, slug).
+   * 2. Stock real en ecommerce-tx.inventario (sin asumir 10 ni 99; sin stock real el producto es no comprable).
    * Ajusta cantidades si superan el stock, marca agotados y retira inactivos.
    */
   async sincronizarYEnriquecer(itemsCrudos, usuarioId = null) {
@@ -127,15 +127,25 @@ export const CarritoModelo = {
       return { articulos: [], avisos: [], itemsAjustados: [] }
     }
 
-    // 1. Consultar productos en ecommerce-core
+    // 1. Consultar productos en ecommerce-core incluyendo categoria_id y relación categorias(nombre, slug)
     const { data: productos, error: errorProd } = await supabaseCore
       .from('productos')
-      .select('id, nombre, precio, precio_anterior, imagen_url, imagen_alt, categoria, activo')
+      .select(`
+        id,
+        nombre,
+        precio,
+        precio_anterior,
+        imagen_url,
+        imagen_alt,
+        categoria_id,
+        activo,
+        categorias ( nombre, slug )
+      `)
       .in('id', ids)
 
     if (errorProd) {
       console.error('Error consultando productos para carrito:', errorProd)
-      throw new Error('No se pudieron obtener los datos de los productos del carrito.')
+      throw new Error('No se pudieron obtener los datos de los productos del carrito: ' + errorProd.message)
     }
 
     // 2. Consultar inventario real en ecommerce-tx
@@ -145,11 +155,16 @@ export const CarritoModelo = {
       .in('producto_id', ids)
 
     if (errorInv) {
-      console.warn('Aviso: No se pudo verificar stock en inventario:', errorInv)
+      console.error('Error al consultar inventario en Supabase TX:', errorInv)
     }
 
     const mapProductos = new Map((productos || []).map(p => [Number(p.id), p]))
-    const mapStock = new Map((inventario || []).map(inv => [Number(inv.producto_id), Number(inv.stock_disponible)]))
+    // Sin fila en inventario o con error de lectura, nunca se asume stock
+    const mapStock = new Map(
+      !errorInv && inventario
+        ? inventario.map(inv => [Number(inv.producto_id), Number(inv.stock_disponible)])
+        : []
+    )
 
     const articulos = []
     const avisos = []
@@ -168,14 +183,22 @@ export const CarritoModelo = {
         continue
       }
 
-      const stockDisponible = mapStock.has(prodId) ? mapStock.get(prodId) : 10
-      let cantidad = Math.max(1, Math.min(Number(item.cantidad) || 1, 99))
-      const agotado = stockDisponible <= 0
+      const tieneInventario = mapStock.has(prodId)
+      const stockDisponible = tieneInventario ? Math.max(0, Number(mapStock.get(prodId)) || 0) : 0
+      const agotado = !tieneInventario || stockDisponible <= 0
+
+      let cantidad = Math.max(1, Number(item.cantidad) || 1)
       let seleccionado = item.seleccionado !== false
 
       if (agotado) {
         seleccionado = false
-        avisos.push(`"${producto.nombre}" está agotado en inventario.`)
+        if (errorInv) {
+          avisos.push(`No se pudo verificar el stock de "${producto.nombre}". Se marcó como no disponible.`)
+        } else if (!tieneInventario) {
+          avisos.push(`"${producto.nombre}" no tiene inventario registrado en el almacén.`)
+        } else {
+          avisos.push(`"${producto.nombre}" está agotado en inventario.`)
+        }
       } else if (cantidad > stockDisponible) {
         cantidad = stockDisponible
         avisos.push(`La cantidad de "${producto.nombre}" se ajustó a ${stockDisponible} por límite de stock disponible.`)
@@ -187,6 +210,9 @@ export const CarritoModelo = {
         seleccionado
       })
 
+      const nombreCategoria = producto.categorias?.nombre || 'Periférico'
+      const slugCategoria = producto.categorias?.slug || 'perifericos'
+
       articulos.push({
         id: producto.id,
         producto_id: producto.id,
@@ -195,52 +221,87 @@ export const CarritoModelo = {
         precio_anterior: producto.precio_anterior ? Number(producto.precio_anterior) : null,
         imagen_url: producto.imagen_url,
         imagen_alt: producto.imagen_alt || producto.nombre,
-        categoria: producto.categoria,
+        categoria_id: producto.categoria_id,
+        categoria: nombreCategoria,
+        categoria_slug: slugCategoria,
         cantidad,
         seleccionado,
-        stock_disponible: Math.max(0, stockDisponible),
+        stock_disponible: stockDisponible,
         agotado
       })
     }
 
-    // Si hay usuario autenticado y se descartaron productos inactivos, eliminarlos de la BD
+    // Si hay usuario autenticado y se descartaron productos inactivos, eliminarlos de la BD con revisión explícita
     if (usuarioId && idsInactivosParaBorrar.length > 0) {
-      await supabaseCore
+      const { error: errBorrar } = await supabaseCore
         .from('items_carrito')
         .delete()
         .eq('usuario_id', usuarioId)
         .in('producto_id', idsInactivosParaBorrar)
-        .catch(() => {})
+
+      if (errBorrar) {
+        console.error('Error al depurar productos inactivos de items_carrito:', errBorrar)
+      }
     }
 
     return { articulos, avisos, itemsAjustados }
   },
 
   /**
-   * Mutaciones en base de datos para usuarios autenticados
+   * Consulta el stock disponible en tiempo real en ecommerce-tx.inventario.
+   * Sin fila en inventario o con error, nunca se asume stock.
    */
-  async agregarArticuloBD(usuarioId, productoId, cantidad = 1) {
-    // 1. Validar stock real en ecommerce-tx
-    const { data: inv } = await supabaseTx
+  async obtenerStockProducto(productoId) {
+    const { data: inv, error: errorInv } = await supabaseTx
       .from('inventario')
       .select('stock_disponible')
       .eq('producto_id', productoId)
       .maybeSingle()
 
-    const stock = inv ? Number(inv.stock_disponible) : 10
+    if (errorInv) {
+      console.error('Error consultando inventario en TX:', errorInv)
+      throw new Error('Error al verificar el stock en el almacén transaccional.')
+    }
+
+    if (!inv) {
+      throw new Error('El producto no tiene registro de inventario en el almacén.')
+    }
+
+    const stock = Number(inv.stock_disponible) || 0
     if (stock <= 0) {
       throw new Error('Este producto se encuentra agotado en inventario.')
     }
 
+    return stock
+  },
+
+  /**
+   * Mutaciones en base de datos para usuarios autenticados
+   */
+  async agregarArticuloBD(usuarioId, productoId, cantidad = 1) {
+    // 1. Validar stock real en ecommerce-tx sin stocks ficticios
+    const stock = await this.obtenerStockProducto(productoId)
+
     // 2. Consultar si ya existe en items_carrito
-    const { data: actual } = await supabaseCore
+    const { data: actual, error: errorActual } = await supabaseCore
       .from('items_carrito')
       .select('cantidad')
       .match({ usuario_id: usuarioId, producto_id: productoId })
       .maybeSingle()
 
-    const cantidadActual = actual ? Number(actual.cantidad) : 0
-    const nuevaCantidad = Math.min(Math.max(1, cantidadActual + cantidad), stock, 99)
+    if (errorActual) {
+      console.error('Error consultando items_carrito actual:', errorActual)
+      throw new Error('Error al verificar el carrito en la base de datos.')
+    }
+
+    const cantidadActual = actual ? Number(actual.cantidad) || 0 : 0
+    const nuevaCantidad = cantidadActual + cantidad
+
+    if (nuevaCantidad > stock) {
+      throw new Error(
+        `Solo hay ${stock} unidad(es) disponible(s) en inventario. Ya tienes ${cantidadActual} en tu carrito.`
+      )
+    }
 
     const { error } = await supabaseCore
       .from('items_carrito')
@@ -253,7 +314,7 @@ export const CarritoModelo = {
 
     if (error) {
       console.error('Error agregando a items_carrito:', error)
-      throw new Error('No se pudo guardar el producto en tu carrito en la base de datos.')
+      throw new Error('No se pudo guardar el producto en tu carrito en la base de datos: ' + error.message)
     }
 
     return nuevaCantidad
@@ -267,7 +328,7 @@ export const CarritoModelo = {
 
     if (error) {
       console.error('Error eliminando de items_carrito:', error)
-      throw new Error('No se pudo eliminar el artículo de la base de datos.')
+      throw new Error('No se pudo eliminar el artículo de la base de datos: ' + error.message)
     }
   },
 
@@ -276,30 +337,23 @@ export const CarritoModelo = {
       return this.eliminarArticuloBD(usuarioId, productoId)
     }
 
-    const { data: inv } = await supabaseTx
-      .from('inventario')
-      .select('stock_disponible')
-      .eq('producto_id', productoId)
-      .maybeSingle()
+    const stock = await this.obtenerStockProducto(productoId)
 
-    const stock = inv ? Number(inv.stock_disponible) : 99
-    if (stock <= 0) {
-      throw new Error('Este producto se encuentra agotado en inventario.')
+    if (cantidad > stock) {
+      throw new Error(`Solo hay ${stock} unidad(es) disponible(s) en inventario.`)
     }
-
-    const cantidadValida = Math.min(Math.max(1, cantidad), stock, 99)
 
     const { error } = await supabaseCore
       .from('items_carrito')
-      .update({ cantidad: cantidadValida })
+      .update({ cantidad })
       .match({ usuario_id: usuarioId, producto_id: productoId })
 
     if (error) {
       console.error('Error actualizando cantidad en items_carrito:', error)
-      throw new Error('No se pudo actualizar la cantidad en la base de datos.')
+      throw new Error('No se pudo actualizar la cantidad en la base de datos: ' + error.message)
     }
 
-    return cantidadValida
+    return cantidad
   },
 
   async alternarSeleccionBD(usuarioId, productoId, nuevoEstado) {
@@ -310,7 +364,7 @@ export const CarritoModelo = {
 
     if (error) {
       console.error('Error al actualizar selección en items_carrito:', error)
-      throw new Error('No se pudo actualizar la selección en la base de datos.')
+      throw new Error('No se pudo actualizar la selección en la base de datos: ' + error.message)
     }
   },
 
@@ -327,7 +381,7 @@ export const CarritoModelo = {
     const { error } = await query
     if (error) {
       console.error('Error al seleccionar todos en items_carrito:', error)
-      throw new Error('No se pudo actualizar la selección en la base de datos.')
+      throw new Error('No se pudo actualizar la selección de todos en la base de datos: ' + error.message)
     }
   },
 
@@ -341,6 +395,7 @@ export const CarritoModelo = {
 
     if (error) {
       console.error('Error eliminando artículos comprados de items_carrito:', error)
+      throw new Error('Error al remover artículos comprados de la base de datos: ' + error.message)
     }
   },
 
@@ -352,7 +407,7 @@ export const CarritoModelo = {
 
     if (error) {
       console.error('Error vaciando items_carrito:', error)
-      throw new Error('No se pudo vaciar el carrito en la base de datos.')
+      throw new Error('No se pudo vaciar el carrito en la base de datos: ' + error.message)
     }
   },
 
